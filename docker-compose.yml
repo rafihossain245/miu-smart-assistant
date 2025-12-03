@@ -1,0 +1,52 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aibot_app
+    restart: unless-stopped
+    working_dir: /var/www/html
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/var/www/html
+    networks:
+      - aibot_net
+    depends_on:
+      - db
+  
+  nginx:
+    image: nginx:alpine
+    container_name: aibot_nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - app
+    networks:
+      - aibot_net
+  
+  db:
+    image: ankane/pgvector:latest
+    container_name: aibot_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    ports:
+      - "5433:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+    networks:
+      - aibot_net
+
+networks:
+  aibot_net:
+    driver: bridge
+
+volumes:
+  dbdata:
