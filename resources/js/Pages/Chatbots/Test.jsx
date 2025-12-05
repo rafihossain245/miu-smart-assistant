@@ -7,17 +7,13 @@ import ReactMarkdown from 'react-markdown';
 import { useEcho } from '../../contexts/EchoContext';
 
 export default function TestChatbot({ chatbot }) {
-    const [messages, setMessages] = useState([
-        {
-            id: 1,
-            content: chatbot.welcome_message,
-            isBot: true,
-            timestamp: new Date(),
-            sources: [],
-            learningDataId: null,
-            feedback: null
-        }
-    ]);
+    // Session management
+    const SESSION_EXPIRY_DAYS = 7;
+    const SESSION_KEY = `ai_chatbot_session_${chatbot.id}`;
+    
+    const [sessionId, setSessionId] = useState(null);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [feedbackInput, setFeedbackInput] = useState('');
@@ -29,6 +25,151 @@ export default function TestChatbot({ chatbot }) {
     const textareaRef = useRef(null);
     const { echo, isConnected } = useEcho();
     const [copiedCode, setCopiedCode] = useState(null);
+
+    // Initialize session and load history on mount
+    useEffect(() => {
+        initializeSession();
+    }, []);
+
+    const initializeSession = async () => {
+        try {
+            // Check for existing session
+            const storedSession = localStorage.getItem(SESSION_KEY);
+            let currentSessionId;
+
+            if (storedSession) {
+                const sessionData = JSON.parse(storedSession);
+                const expiryDate = new Date(sessionData.expiry);
+                
+                // Check if session is still valid
+                if (expiryDate > new Date()) {
+                    currentSessionId = sessionData.sessionId;
+                    console.log('Existing session found:', currentSessionId);
+                    
+                    // Load previous messages
+                    await loadConversationHistory(currentSessionId);
+                } else {
+                    console.log('Session expired, creating new session');
+                    currentSessionId = createNewSession();
+                    setMessages([{
+                        id: 1,
+                        content: chatbot.welcome_message,
+                        isBot: true,
+                        timestamp: new Date(),
+                        sources: [],
+                        learningDataId: null,
+                        feedback: null
+                    }]);
+                }
+            } else {
+                console.log('No session found, creating new session');
+                currentSessionId = createNewSession();
+                setMessages([{
+                    id: 1,
+                    content: chatbot.welcome_message,
+                    isBot: true,
+                    timestamp: new Date(),
+                    sources: [],
+                    learningDataId: null,
+                    feedback: null
+                }]);
+            }
+
+            setSessionId(currentSessionId);
+        } catch (error) {
+            console.error('Failed to initialize session:', error);
+            const newSessionId = createNewSession();
+            setSessionId(newSessionId);
+            setMessages([{
+                id: 1,
+                content: chatbot.welcome_message,
+                isBot: true,
+                timestamp: new Date(),
+                sources: [],
+                learningDataId: null,
+                feedback: null
+            }]);
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    const createNewSession = () => {
+        const newSessionId = 'test_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Calculate expiry date (7 days from now)
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + SESSION_EXPIRY_DAYS);
+        
+        // Store session in localStorage
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+            sessionId: newSessionId,
+            expiry: expiryDate.toISOString()
+        }));
+        
+        return newSessionId;
+    };
+
+    const loadConversationHistory = async (sessionId) => {
+        try {
+            const response = await fetch(`/api/conversation/${sessionId}/messages`);
+            const data = await response.json();
+            
+            if (data.messages && data.messages.length > 0) {
+                console.log('Loaded', data.messages.length, 'previous messages');
+                setMessages(data.messages.map(msg => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                })));
+            } else {
+                console.log('No previous messages found, starting fresh');
+                setMessages([{
+                    id: 1,
+                    content: chatbot.welcome_message,
+                    isBot: true,
+                    timestamp: new Date(),
+                    sources: [],
+                    learningDataId: null,
+                    feedback: null
+                }]);
+            }
+        } catch (error) {
+            console.error('Failed to load conversation history:', error);
+            setMessages([{
+                id: 1,
+                content: chatbot.welcome_message,
+                isBot: true,
+                timestamp: new Date(),
+                sources: [],
+                learningDataId: null,
+                feedback: null
+            }]);
+        }
+    };
+
+    const clearHistory = () => {
+        if (confirm('Are you sure you want to clear the conversation history? This will start a fresh conversation.')) {
+            // Remove session from localStorage
+            localStorage.removeItem(SESSION_KEY);
+            
+            // Create new session
+            const newSessionId = createNewSession();
+            setSessionId(newSessionId);
+            
+            // Reset messages to welcome message
+            setMessages([{
+                id: 1,
+                content: chatbot.welcome_message,
+                isBot: true,
+                timestamp: new Date(),
+                sources: [],
+                learningDataId: null,
+                feedback: null
+            }]);
+            
+            console.log('Conversation history cleared, new session:', newSessionId);
+        }
+    };
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -367,7 +508,7 @@ export default function TestChatbot({ chatbot }) {
 
     const sendMessage = async (e) => {
         e.preventDefault();
-        if (!input.trim() || isLoading) return;
+        if (!input.trim() || isLoading || !sessionId) return;
 
         // Check network status
         if (!isOnline) {
@@ -397,7 +538,7 @@ export default function TestChatbot({ chatbot }) {
                 body: JSON.stringify({
                     message: userMessage.content,
                     chatbot_id: chatbot.id,
-                    session_id: `test_${Date.now()}`,
+                    session_id: sessionId, // Use persistent session ID
                 }),
             });
 
@@ -509,14 +650,28 @@ export default function TestChatbot({ chatbot }) {
         }
     };
 
-
-
-
     return (
         <ChatbotLayout chatbot={chatbot} title={`Test - ${chatbot.name}`} enableScroll={false}>
             <div className="flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-white to-pink-50 overflow-hidden">
                 {/* Fixed Header */}
-                <div className="flex-shrink-0 text-center py-6 px-4">
+                <div className="flex-shrink-0 text-center py-6 px-4 relative">
+                    {/* Clear History Button */}
+                    
+                    {/*print console log here*/}
+                    {console.log('Messages length:', messages.length, 'Is loading history:', isLoadingHistory)}
+                    
+                    {messages.length > 1 && !isLoadingHistory && (
+                        <button
+                            onClick={clearHistory}
+                            className="absolute top-4 right-4 text-xs px-3 py-1.5 bg-red-100 text-red-600 hover:bg-red-200 rounded-lg transition-colors flex items-center space-x-1"
+                        >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span>Clear History</span>
+                        </button>
+                    )}
+                    
                     <div className="relative inline-block mb-4">
                         <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center mx-auto shadow-lg">
                             <div
@@ -577,7 +732,16 @@ export default function TestChatbot({ chatbot }) {
 
                         {/* Messages - Scrollable */}
                         <div className="flex-1 overflow-y-auto p-6 space-y-4 min-h-0">
-                            {messages.map((message) => (
+                            {isLoadingHistory ? (
+                                <div className="flex items-center justify-center h-full">
+                                    <div className="text-center">
+                                        <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mb-2"></div>
+                                        <p className="text-gray-500 text-sm">Loading conversation history...</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {messages.map((message) => (
                                 <div key={message.id} className={`flex items-start space-x-3 ${message.isBot ? '' : 'flex-row-reverse space-x-reverse'}`}>
                                     {message.isBot && (
                                         <div
@@ -780,6 +944,8 @@ export default function TestChatbot({ chatbot }) {
                                 </div>
                             )}
                             <div ref={messagesEndRef} />
+                                </>
+                            )}
                         </div>
 
                         {/* Input Area - Fixed at bottom */}

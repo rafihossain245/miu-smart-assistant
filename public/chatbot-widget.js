@@ -18,8 +18,51 @@
         const chatbotId = window.aiChatbot.chatbotId;
         const baseUrl = window.aiChatbot.baseUrl;
 
-        // Generate unique session ID
-        const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        // Session management - 7 days persistence
+        const SESSION_EXPIRY_DAYS = 7;
+        const SESSION_KEY = 'ai_chatbot_widget_session_' + chatbotId;
+        
+        let sessionId;
+        
+        // Check for existing session
+        const storedSession = localStorage.getItem(SESSION_KEY);
+        if (storedSession) {
+            try {
+                const sessionData = JSON.parse(storedSession);
+                const expiryDate = new Date(sessionData.expiry);
+                
+                // Check if session is still valid
+                if (expiryDate > new Date()) {
+                    sessionId = sessionData.sessionId;
+                    console.log('AI Chatbot: Existing widget session found:', sessionId);
+                } else {
+                    console.log('AI Chatbot: Widget session expired, creating new session');
+                    sessionId = createNewWidgetSession();
+                }
+            } catch (error) {
+                console.error('AI Chatbot: Failed to parse stored session, creating new session');
+                sessionId = createNewWidgetSession();
+            }
+        } else {
+            console.log('AI Chatbot: No widget session found, creating new session');
+            sessionId = createNewWidgetSession();
+        }
+        
+        function createNewWidgetSession() {
+            const newSessionId = 'widget_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
+            // Calculate expiry date (7 days from now)
+            const expiryDate = new Date();
+            expiryDate.setDate(expiryDate.getDate() + SESSION_EXPIRY_DAYS);
+            
+            // Store session in localStorage
+            localStorage.setItem(SESSION_KEY, JSON.stringify({
+                sessionId: newSessionId,
+                expiry: expiryDate.toISOString()
+            }));
+            
+            return newSessionId;
+        }
 
         // Fetch chatbot appearance configuration
         let chatbotConfig = {};

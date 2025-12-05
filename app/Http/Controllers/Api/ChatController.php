@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Chatbot;
+use App\Models\Conversation;
 use App\Services\RAGService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -84,5 +85,34 @@ class ChatController extends Controller
                 'error' => 'Chatbot not found or inactive',
             ], 404);
         }
+    }
+
+    public function getConversationMessages(string $sessionId): JsonResponse
+    {
+        $conversation = Conversation::where('session_id', $sessionId)
+            ->with(['messages' => function($query) {
+                $query->orderBy('created_at', 'asc');
+            }])
+            ->first();
+        return response()->json($conversation);
+        
+        if (!$conversation) {
+            return response()->json(['messages' => []]);
+        }
+        
+        return response()->json([
+            'messages' => $conversation->messages->map(function($msg) {
+                return [
+                    'id' => $msg->id,
+                    'content' => $msg->content,
+                    'isBot' => $msg->is_bot,
+                    'timestamp' => $msg->created_at,
+                    'sources' => $msg->sources ?? [],
+                    'learningDataId' => $msg->learning_data_id ?? null,
+                    'feedback' => null,
+                    'showContactInfo' => false // Will be determined by frontend based on message content
+                ];
+            })
+        ]);
     }
 }

@@ -3,15 +3,13 @@ import { Head } from '@inertiajs/react';
 import { PaperAirplaneIcon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 
 export default function EmbedView({ chatbot }) {
-    const [messages, setMessages] = useState([
-        {
-            id: 1,
-            content: chatbot.welcome_message || "Hello! How can I help you today?",
-            isBot: true,
-            timestamp: new Date(),
-            sources: []
-        }
-    ]);
+    // Session management
+    const SESSION_EXPIRY_DAYS = 7;
+    const SESSION_KEY = `ai_chatbot_embed_session_${chatbot.id}`;
+    
+    const [sessionId, setSessionId] = useState(null);
+    const [isLoadingHistory, setIsLoadingHistory] = useState(true);
+    const [messages, setMessages] = useState([]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(true); // Always open when embedded
@@ -19,6 +17,119 @@ export default function EmbedView({ chatbot }) {
 
     // Check if we're in an iframe (embedded)
     const isEmbedded = window.self !== window.top;
+
+    // Initialize session and load history on mount
+    useEffect(() => {
+        initializeSession();
+    }, []);
+
+    const initializeSession = async () => {
+        try {
+            // Check for existing session
+            const storedSession = localStorage.getItem(SESSION_KEY);
+            let currentSessionId;
+
+            if (storedSession) {
+                const sessionData = JSON.parse(storedSession);
+                const expiryDate = new Date(sessionData.expiry);
+
+                {console.log(sessionData, 'expire',expiryDate);}
+                
+                // Check if session is still valid
+                if (expiryDate > new Date()) {
+                    currentSessionId = sessionData.sessionId;
+                    console.log('Existing embed session found:', currentSessionId);
+                    
+                    // Load previous messages
+                    await loadConversationHistory(currentSessionId);
+                } else {
+                    console.log('Embed session expired, creating new session');
+                    currentSessionId = createNewSession();
+                    setMessages([{
+                        id: 1,
+                        content: chatbot.welcome_message || "Hello! How can I help you today?",
+                        isBot: true,
+                        timestamp: new Date(),
+                        sources: []
+                    }]);
+                }
+            } else {
+                console.log('No embed session found, creating new session');
+                currentSessionId = createNewSession();
+                setMessages([{
+                    id: 1,
+                    content: chatbot.welcome_message || "Hello! How can I help you today?",
+                    isBot: true,
+                    timestamp: new Date(),
+                    sources: []
+                }]);
+            }
+
+            setSessionId(currentSessionId);
+        } catch (error) {
+            console.error('Failed to initialize embed session:', error);
+            const newSessionId = createNewSession();
+            setSessionId(newSessionId);
+            setMessages([{
+                id: 1,
+                content: chatbot.welcome_message || "Hello! How can I help you today?",
+                isBot: true,
+                timestamp: new Date(),
+                sources: []
+            }]);
+        } finally {
+            setIsLoadingHistory(false);
+        }
+    };
+
+    const createNewSession = () => {
+        const newSessionId = 'embed_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Calculate expiry date (7 days from now)
+        const expiryDate = new Date();
+        expiryDate.setDate(expiryDate.getDate() + SESSION_EXPIRY_DAYS);
+        
+        // Store session in localStorage
+        localStorage.setItem(SESSION_KEY, JSON.stringify({
+            sessionId: newSessionId,
+            expiry: expiryDate.toISOString()
+        }));
+        
+        return newSessionId;
+    };
+
+    const loadConversationHistory = async (sessionId) => {
+        try {
+            const response = await fetch(`/api/conversation/${sessionId}/messages`);
+            const data = await response.json();
+            
+            if (data.messages && data.messages.length > 0) {
+                console.log('Loaded', data.messages.length, 'previous embed messages');
+                setMessages(data.messages.map(msg => ({
+                    ...msg,
+                    timestamp: new Date(msg.timestamp)
+                })));
+            } else {
+                console.log('No previous embed messages found, starting fresh');
+                setMessages([{
+                    id: 1,
+                    content: chatbot.welcome_message || "Hello! How can I help you today?",
+                    isBot: true,
+                    timestamp: new Date(),
+                    sources: []
+                }]);
+            }
+        } catch (error) {
+            console.error('Failed to load embed conversation history:', error);
+            setMessages([{
+                id: 1,
+                content: chatbot.welcome_message || "Hello! How can I help you today?",
+                isBot: true,
+                timestamp: new Date(),
+                sources: []
+            }]);
+        }
+    };
 
     // Function to render bot icon consistently
     const renderBotIcon = (size = 'sm') => {
@@ -76,7 +187,7 @@ export default function EmbedView({ chatbot }) {
 
     const sendMessage = async (e) => {
         e.preventDefault();
-        if (!input.trim() || isLoading) return;
+        if (!input.trim() || isLoading || !sessionId) return;
 
         const userMessage = {
             id: Date.now(),
@@ -100,7 +211,7 @@ export default function EmbedView({ chatbot }) {
                 body: JSON.stringify({
                     message: userMessage.content,
                     chatbot_id: chatbot.id,
-                    session_id: `embed_${Date.now()}`,
+                    session_id: sessionId, // Use persistent session ID
                 }),
             });
 
@@ -174,7 +285,16 @@ export default function EmbedView({ chatbot }) {
 
                     {/* Messages */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                        {messages.map((message) => (
+                        {isLoadingHistory ? (
+                            <div className="flex items-center justify-center h-full">
+                                <div className="text-center">
+                                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-500 mb-2"></div>
+                                    <p className="text-gray-500 text-sm">Loading conversation...</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <>
+                                {messages.map((message) => (
                             <div key={message.id} className={`flex items-start space-x-3 ${message.isBot ? '' : 'flex-row-reverse space-x-reverse'}`}>
                                 {message.isBot && (
                                     <div
@@ -240,6 +360,8 @@ export default function EmbedView({ chatbot }) {
                             </div>
                         )}
                         <div ref={messagesEndRef} />
+                            </>
+                        )}
                     </div>
 
                     {/* Input Area */}
