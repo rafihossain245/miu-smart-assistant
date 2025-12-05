@@ -115,4 +115,24 @@ class ChatController extends Controller
             })
         ]);
     }
+
+    public function getBroadcastConfig(): JsonResponse
+    {
+        $driver = config('broadcasting.default');
+        
+        if ($driver === 'reverb') {
+            return response()->json([
+                'enabled' => true,
+                'driver' => 'reverb',
+                'key' => config('reverb.apps.apps.0.key') ?? config('reverb.app_key') ?? env('REVERB_APP_KEY'),
+                'host' => env('VITE_REVERB_HOST') ?? env('REVERB_HOST'),
+                'port' => (int) (env('VITE_REVERB_PORT') ?? env('REVERB_PORT')),
+                'scheme' => env('VITE_REVERB_SCHEME') ?? env('REVERB_SCHEME'),
+            ]);
+        }
+        
+        return response()->json([
+            'enabled' => false,
+        ]);
+    }
 }
