@@ -58,11 +58,16 @@ export const EchoProvider = ({ children }) => {
                     echoConfig = {
                         ...echoConfig,
                         broadcaster: 'reverb',
-                        key: config.key,
-                        wsHost: config.host || window.location.hostname,
-                        wsPort: config.port || 8080,
-                        wssPort: config.port || 8080,
-                        forceTLS: config.scheme === 'https',
+                        // key: config.key,
+                        // wsHost: config.host || window.location.hostname,
+                        // wsPort: config.port || 8080,
+                        // wssPort: config.port || 8080,
+                        // forceTLS: config.scheme === 'https',
+                        key: import.meta.env.VITE_REVERB_APP_KEY,
+                        wsHost: import.meta.env.VITE_REVERB_HOST,
+                        wsPort: import.meta.env.VITE_REVERB_PORT,
+                        wssPort: import.meta.env.VITE_REVERB_PORT,
+                        forceTLS: import.meta.env.VITE_REVERB_SCHEME === 'wss',
                         enabledTransports: ['ws', 'wss'],
                     };
                 } else if (config.driver === 'pusher') {

@@ -112,6 +112,21 @@ return [
             // 'trust_server_certificate' => env('DB_TRUST_SERVER_CERTIFICATE', 'false'),
         ],
 
+        // Add CRM connection (MySQL)
+        'crm' => [
+            'driver' => env('CRM_DB_CONNECTION', 'mysql'),
+            'host' => env('CRM_DB_HOST', '127.0.0.1'),
+            'port' => env('CRM_DB_PORT', '3306'),
+            'database' => env('CRM_DB_DATABASE', 'perfexcrm'),
+            'username' => env('CRM_DB_USERNAME', 'root'),
+            'password' => env('CRM_DB_PASSWORD', ''),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',  // PerfexCRM uses 'tbl' prefix (e.g., tblclients)
+            'strict' => true,
+            'engine' => null,
+        ],
+
     ],
 
     /*

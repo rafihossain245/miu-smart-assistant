@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Head } from '@inertiajs/react';
-import { PaperAirplaneIcon, XMarkIcon, ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
+import { PaperAirplaneIcon, XMarkIcon, ChatBubbleLeftRightIcon, ClipboardDocumentIcon } from '@heroicons/react/24/outline';
+import { ClipboardDocumentCheckIcon } from '@heroicons/react/24/solid';
+import ReactMarkdown from 'react-markdown';
 
 export default function EmbedView({ chatbot }) {
     // Session management
@@ -13,7 +15,12 @@ export default function EmbedView({ chatbot }) {
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [isOpen, setIsOpen] = useState(true); // Always open when embedded
+    const [copiedCode, setCopiedCode] = useState(null);
     const messagesEndRef = useRef(null);
+
+    const [showMenu, setShowMenu] = useState(false);
+    const [queryMode, setQueryMode] = useState('general'); // 'general' or 'sql'
+    const [selectedSqlType, setSelectedSqlType] = useState(null); // for SQL submenu
 
     // Check if we're in an iframe (embedded)
     const isEmbedded = window.self !== window.top;
@@ -32,8 +39,6 @@ export default function EmbedView({ chatbot }) {
             if (storedSession) {
                 const sessionData = JSON.parse(storedSession);
                 const expiryDate = new Date(sessionData.expiry);
-
-                {console.log(sessionData, 'expire',expiryDate);}
                 
                 // Check if session is still valid
                 if (expiryDate > new Date()) {
@@ -177,6 +182,259 @@ export default function EmbedView({ chatbot }) {
         }
     };
 
+    // Code block component with copy functionality
+    const CodeBlock = ({ children, className }) => {
+        const isCodeBlock = className?.includes('language-');
+        const language = className?.replace('language-', '') || '';
+
+        if (isCodeBlock) {
+            const codeContent = String(children).replace(/\n$/, '');
+            const codeId = `code-${Date.now()}-${Math.random()}`;
+
+            const copyToClipboard = async () => {
+                try {
+                    await navigator.clipboard.writeText(codeContent);
+                    setCopiedCode(codeId);
+                    setTimeout(() => setCopiedCode(null), 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                }
+            };
+
+            return (
+                <div className="relative group my-4">
+                    <div className="flex items-center justify-between bg-gray-800 text-gray-200 px-4 py-2 rounded-t-lg text-sm">
+                        <span className="font-medium">{language || 'Code'}</span>
+                        <button
+                            onClick={copyToClipboard}
+                            className="flex items-center space-x-1 text-gray-400 hover:text-white transition-colors"
+                        >
+                            {copiedCode === codeId ? (
+                                <>
+                                    <ClipboardDocumentCheckIcon className="h-4 w-4" />
+                                    <span className="text-xs">Copied!</span>
+                                </>
+                            ) : (
+                                <>
+                                    <ClipboardDocumentIcon className="h-4 w-4" />
+                                    <span className="text-xs">Copy</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                    <pre className="bg-gray-900 text-gray-100 p-4 rounded-b-lg overflow-x-auto">
+                        <code className={className}>{children}</code>
+                    </pre>
+                </div>
+            );
+        }
+
+        return <code className="bg-gray-100 text-gray-800 px-1 py-0.5 rounded text-sm font-mono">{children}</code>;
+    };
+
+    // Enhanced contact link component
+    const ContactLink = ({ children }) => {
+        const extractText = (children) => {
+            if (typeof children === 'string') return children;
+            if (Array.isArray(children)) {
+                return children.map(child => extractText(child)).join('');
+            }
+            if (children && typeof children === 'object') {
+                if (children.type === 'strong' || children.type === 'em' || children.type === 'span') {
+                    return extractText(children.props.children);
+                }
+                if (children.props && children.props.children) {
+                    return extractText(children.props.children);
+                }
+            }
+            return String(children || '');
+        };
+
+        const text = extractText(children);
+
+        const parseMultipleContacts = (text) => {
+            if (text.includes('•') || text.includes('\n') || text.includes('WhatsApp:') || text.includes('Phone:') || text.includes('Email:')) {
+                let processedText = text
+                    .replace(/Support\s*[\n•]\s*Email:/gi, 'Support Email:')
+                    .replace(/Support\s+Email:/gi, 'Support Email:');
+
+                let initialLines = processedText.split(/[\n•]+/).filter(line => line.trim());
+
+                const finalLines = [];
+                initialLines.forEach(line => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return;
+
+                    const parts = trimmed.split(/(?=\s*(?:WhatsApp:|Phone:|Email:|Support\s*Email:|Support\s*Portal:))/);
+                    parts.forEach(part => {
+                        if (part.trim()) {
+                            finalLines.push(part.trim());
+                        }
+                    });
+                });
+
+                const lines = finalLines;
+                return lines.map((line, index) => {
+                    const trimmedLine = line.trim();
+                    if (!trimmedLine) return null;
+
+                    return (
+                        <div key={index} className="mb-1 flex items-start">
+                            <span className="mr-2 text-gray-600">•</span>
+                            <span className="flex-1">{parseLineForContacts(trimmedLine, index)}</span>
+                        </div>
+                    );
+                }).filter(Boolean);
+            }
+
+            return [parseLineForContacts(text, 0)];
+        };
+
+        const parseLineForContacts = (text, baseKey) => {
+            const elements = [];
+            let currentIndex = 0;
+
+            const patterns = [
+                { regex: /https?:\/\/[^\s]+/g, type: 'url' },
+                { regex: /[\w\.-]+@[\w\.-]+\.\w+/g, type: 'email' },
+                { regex: /\+[\d\s\-\(\)]{8,}/g, type: 'phone' },
+                { regex: /\b[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?/g, type: 'domain' }
+            ];
+
+            const matches = [];
+
+            patterns.forEach(pattern => {
+                let match;
+                const regex = new RegExp(pattern.regex.source, pattern.regex.flags);
+                while ((match = regex.exec(text)) !== null) {
+                    const newMatch = {
+                        type: pattern.type,
+                        text: match[0],
+                        start: match.index,
+                        end: match.index + match[0].length
+                    };
+
+                    const hasOverlap = matches.some(existingMatch =>
+                        (newMatch.start >= existingMatch.start && newMatch.start < existingMatch.end) ||
+                        (newMatch.end > existingMatch.start && newMatch.end <= existingMatch.end) ||
+                        (newMatch.start <= existingMatch.start && newMatch.end >= existingMatch.end)
+                    );
+
+                    if (!hasOverlap) {
+                        matches.push(newMatch);
+                    }
+                }
+            });
+
+            matches.sort((a, b) => a.start - b.start);
+
+            matches.forEach((match, index) => {
+                if (match.start > currentIndex) {
+                    elements.push(text.substring(currentIndex, match.start));
+                }
+
+                let href = '';
+                let className = 'text-blue-600 hover:text-blue-800 underline font-medium';
+                let target = undefined;
+                let rel = undefined;
+
+                switch (match.type) {
+                    case 'phone':
+                        const isWhatsApp = text.toLowerCase().substring(0, match.start).includes('whatsapp');
+                        href = isWhatsApp ? `https://wa.me/${match.text.replace(/[\s\-\(\)]/g, '')}` : `tel:${match.text}`;
+                        if (isWhatsApp) {
+                            className = 'text-green-600 hover:text-green-800 underline font-medium';
+                            target = '_blank';
+                            rel = 'noopener noreferrer';
+                        }
+                        break;
+                    case 'email':
+                        href = `mailto:${match.text}`;
+                        break;
+                    case 'url':
+                        href = match.text;
+                        target = '_blank';
+                        rel = 'noopener noreferrer';
+                        break;
+                    case 'domain':
+                        href = `https://${match.text}`;
+                        target = '_blank';
+                        rel = 'noopener noreferrer';
+                        break;
+                }
+
+                elements.push(
+                    <a
+                        key={`link-${baseKey}-${index}`}
+                        href={href}
+                        target={target}
+                        rel={rel}
+                        className={className}
+                    >
+                        {match.text}
+                    </a>
+                );
+
+                currentIndex = match.end;
+            });
+
+            if (currentIndex < text.length) {
+                elements.push(text.substring(currentIndex));
+            }
+
+            return elements.length > 1 ? elements : text;
+        };
+
+        const hasContactInfo = /https?:\/\/[^\s]+|\+[\d\s\-\(\)]{8,}|[\w\.-]+@[\w\.-]+\.\w+|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}(?:\/[^\s]*)?/i.test(text);
+
+        if (hasContactInfo) {
+            const elements = parseMultipleContacts(text);
+            return <span>{elements}</span>;
+        }
+
+        return <span>{children}</span>;
+    };
+
+    const handleMenuClick = (mode, type = null) => {
+        setQueryMode(mode);
+        setSelectedSqlType(type);
+        setShowMenu(false);
+        
+        // Set appropriate placeholder based on selection
+        if (mode === 'sql' && type) {
+            const placeholders = {
+                'invoice': 'Enter email to view invoices',
+                'user': 'Enter email to view user information', 
+                'product-details': 'View product details',
+                'product-stock': 'View product stock information',
+                'other': 'Enter your database query'
+            };
+            // You could set a temporary placeholder or guide message
+        }
+    };
+
+    const clearHistory = () => {
+        if (confirm('Are you sure you want to clear the conversation history? This cannot be undone.')) {
+            // Clear localStorage session
+            localStorage.removeItem(SESSION_KEY);
+            
+            // Create new session
+            const newSessionId = createNewSession();
+            setSessionId(newSessionId);
+            
+            // Reset messages with welcome message
+            setMessages([{
+                id: 1,
+                content: chatbot.welcome_message || "Hello! How can I help you today?",
+                isBot: true,
+                timestamp: new Date(),
+                sources: []
+            }]);
+            
+            console.log('Conversation history cleared, new session created:', newSessionId);
+        }
+    };
+
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     };
@@ -184,6 +442,21 @@ export default function EmbedView({ chatbot }) {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Update input placeholder based on mode
+    const getPlaceholder = () => {
+        if (queryMode === 'sql') {
+            switch (selectedSqlType) {
+                case 'invoice': return 'Enter email to view invoices...';
+                case 'user': return 'Enter email to view user information...';
+                case 'product-details': return 'Enter product name to see details...';
+                case 'product-stock': return 'View stock information...';
+                case 'other': return 'Enter your database query...';
+                default: return 'Choose a query type from the menu...';
+            }
+        }
+        return 'Ask me anything...';
+    };
 
     const sendMessage = async (e) => {
         e.preventDefault();
@@ -212,6 +485,8 @@ export default function EmbedView({ chatbot }) {
                     message: userMessage.content,
                     chatbot_id: chatbot.id,
                     session_id: sessionId, // Use persistent session ID
+                    query_mode: queryMode, // Add query mode
+                    sql_type: selectedSqlType, // Add SQL type if applicable
                 }),
             });
 
@@ -281,6 +556,17 @@ export default function EmbedView({ chatbot }) {
                                 </p>
                             </div>
                         </div>
+                        {/* Clear History Button */}
+                        <button
+                            onClick={clearHistory}
+                            className="px-3 py-2 rounded-lg bg-red-500 hover:bg-red-600 transition-colors flex items-center space-x-2 text-white"
+                            title="Clear conversation history"
+                        >
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                            <span className="text-xs font-medium">Clear</span>
+                        </button>
                     </div>
 
                     {/* Messages */}
@@ -320,7 +606,63 @@ export default function EmbedView({ chatbot }) {
                                         { color: textColor } :
                                         { backgroundColor: primaryColor }
                                     }>
-                                        <p className="text-sm leading-relaxed">{message.content}</p>
+                                        {message.isBot ? (
+                                            <div className="text-sm leading-relaxed">
+                                                <ReactMarkdown
+                                                    components={{
+                                                        p: ({ children }) => {
+                                                            const text = String(children);
+                                                            const hasContactInfo = /WhatsApp|Phone|Email|Support|\+[\d\s\-\(\)]{8,}|[\w\.-]+@[\w\.-]+\.\w+|https?:\/\/|📱|📞|✉️|🛠️|🌐|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i.test(text);
+
+                                                            if (hasContactInfo) {
+                                                                if (text.includes('•') || text.includes('WhatsApp:') || text.includes('Phone:') || text.includes('Email:')) {
+                                                                    return (
+                                                                        <div className="mb-3 last:mb-0 leading-relaxed space-y-2">
+                                                                            <ContactLink>{children}</ContactLink>
+                                                                        </div>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <p className="mb-3 last:mb-0 leading-relaxed">
+                                                                        <ContactLink>{children}</ContactLink>
+                                                                    </p>
+                                                                );
+                                                            }
+                                                            return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>;
+                                                        },
+                                                        strong: ({ children }) => <strong className="font-bold text-gray-900">{children}</strong>,
+                                                        em: ({ children }) => <em className="italic text-gray-800">{children}</em>,
+                                                        ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1">{children}</ul>,
+                                                        ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1">{children}</ol>,
+                                                        li: ({ children }) => <li className="text-gray-800 leading-relaxed pl-1">{children}</li>,
+                                                        h1: ({ children }) => <h1 className="text-lg font-bold mb-3 mt-2 text-gray-900">{children}</h1>,
+                                                        h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-2 text-gray-900">{children}</h2>,
+                                                        h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-1 text-gray-900">{children}</h3>,
+                                                        h4: ({ children }) => <h4 className="text-sm font-semibold mb-1 text-gray-800">{children}</h4>,
+                                                        blockquote: ({ children }) => (
+                                                            <blockquote className="border-l-4 border-gray-300 pl-4 my-3 italic text-gray-700">
+                                                                {children}
+                                                            </blockquote>
+                                                        ),
+                                                        code: ({ children, inline, className }) =>
+                                                            inline ? (
+                                                                <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-800">
+                                                                    {children}
+                                                                </code>
+                                                            ) : (
+                                                                <CodeBlock className={className}>{children}</CodeBlock>
+                                                            ),
+                                                        pre: ({ children }) => <pre className="mb-3">{children}</pre>,
+                                                        hr: () => <hr className="my-4 border-gray-300" />,
+                                                        a: ({ children, href }) => <ContactLink href={href}>{children}</ContactLink>,
+                                                    }}
+                                                >
+                                                    {message.content}
+                                                </ReactMarkdown>
+                                            </div>
+                                        ) : (
+                                            <div className="text-sm leading-relaxed whitespace-pre-line">{message.content}</div>
+                                        )}
 
                                         {message.sources && message.sources.length > 0 && (
                                             <div className="mt-3 pt-3 border-t border-gray-200">
@@ -365,14 +707,96 @@ export default function EmbedView({ chatbot }) {
                     </div>
 
                     {/* Input Area */}
-                    <div className="p-4 border-t border-gray-200">
+                    <div className="p-4 border-t border-gray-200 relative">
+                        {showMenu && (
+                            <div className="absolute bottom-full left-0 mb-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                                <div className="p-2">
+                                    <button
+                                        onClick={() => handleMenuClick('general')}
+                                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                            queryMode === 'general' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                                        }`}
+                                    >
+                                        🤖 General
+                                        {/* <span className="block text-xs text-gray-500 mt-1">AI-powered answers from knowledge base</span> */}
+                                    </button>
+                                    
+                                    <button
+                                        onClick={() => handleMenuClick('sql')}
+                                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors mt-1 ${
+                                            queryMode === 'sql' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'
+                                        }`}
+                                    >
+                                        🗄️ SQL
+                                        {/* <span className="block text-xs text-gray-500 mt-1">Direct database queries</span> */}
+                                    </button>
+                                    
+                                    {queryMode === 'sql' && (
+                                        <div className="mt-2 ml-4 space-y-1">
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'invoice')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'invoice' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                📄 Invoice
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'user')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'user' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                👤 User
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'product-details')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'product-details' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                📦 Product
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'product-stock')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'product-stock' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                📊 Stock
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'other')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'other' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                🔍 Other
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
                         <form onSubmit={sendMessage} className="flex items-center space-x-3">
+                            {/* Add hamburger menu button */}
+                            <button
+                                type="button"
+                                onClick={() => setShowMenu(!showMenu)}
+                                className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors"
+                                style={{ color: primaryColor }}
+                            >
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                </svg>
+                            </button>
                             <div className="flex-1">
                                 <input
                                     type="text"
                                     value={input}
                                     onChange={(e) => setInput(e.target.value)}
-                                    placeholder="Do you have question?"
+                                    // placeholder="Do you have question?"
+                                    placeholder={getPlaceholder()}
                                     className="w-full px-4 py-3 bg-gray-50 border-0 rounded-full focus:ring-2 focus:bg-white transition-colors text-sm"
                                     style={{
                                         focusRingColor: primaryColor,
@@ -479,7 +903,63 @@ export default function EmbedView({ chatbot }) {
                                             { color: textColor } :
                                             { backgroundColor: primaryColor }
                                         }>
-                                            <p className="text-sm leading-relaxed">{message.content}</p>
+                                            {message.isBot ? (
+                                                <div className="text-sm leading-relaxed">
+                                                    <ReactMarkdown
+                                                        components={{
+                                                            p: ({ children }) => {
+                                                                const text = String(children);
+                                                                const hasContactInfo = /WhatsApp|Phone|Email|Support|\+[\d\s\-\(\)]{8,}|[\w\.-]+@[\w\.-]+\.\w+|https?:\/\/|📱|📞|✉️|🛠️|🌐|[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/i.test(text);
+
+                                                                if (hasContactInfo) {
+                                                                    if (text.includes('•') || text.includes('WhatsApp:') || text.includes('Phone:') || text.includes('Email:')) {
+                                                                        return (
+                                                                            <div className="mb-3 last:mb-0 leading-relaxed space-y-2">
+                                                                                <ContactLink>{children}</ContactLink>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return (
+                                                                        <p className="mb-3 last:mb-0 leading-relaxed">
+                                                                            <ContactLink>{children}</ContactLink>
+                                                                        </p>
+                                                                    );
+                                                                }
+                                                                return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>;
+                                                            },
+                                                            strong: ({ children }) => <strong className="font-bold text-gray-900">{children}</strong>,
+                                                            em: ({ children }) => <em className="italic text-gray-800">{children}</em>,
+                                                            ul: ({ children }) => <ul className="list-disc list-outside ml-4 mb-3 space-y-1">{children}</ul>,
+                                                            ol: ({ children }) => <ol className="list-decimal list-outside ml-4 mb-3 space-y-1">{children}</ol>,
+                                                            li: ({ children }) => <li className="text-gray-800 leading-relaxed pl-1">{children}</li>,
+                                                            h1: ({ children }) => <h1 className="text-lg font-bold mb-3 mt-2 text-gray-900">{children}</h1>,
+                                                            h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-2 text-gray-900">{children}</h2>,
+                                                            h3: ({ children }) => <h3 className="text-sm font-bold mb-2 mt-1 text-gray-900">{children}</h3>,
+                                                            h4: ({ children }) => <h4 className="text-sm font-semibold mb-1 text-gray-800">{children}</h4>,
+                                                            blockquote: ({ children }) => (
+                                                                <blockquote className="border-l-4 border-gray-300 pl-4 my-3 italic text-gray-700">
+                                                                    {children}
+                                                                </blockquote>
+                                                            ),
+                                                            code: ({ children, inline, className }) =>
+                                                                inline ? (
+                                                                    <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono text-gray-800">
+                                                                        {children}
+                                                                    </code>
+                                                                ) : (
+                                                                    <CodeBlock className={className}>{children}</CodeBlock>
+                                                                ),
+                                                            pre: ({ children }) => <pre className="mb-3">{children}</pre>,
+                                                            hr: () => <hr className="my-4 border-gray-300" />,
+                                                            a: ({ children, href }) => <ContactLink href={href}>{children}</ContactLink>,
+                                                        }}
+                                                    >
+                                                        {message.content}
+                                                    </ReactMarkdown>
+                                                </div>
+                                            ) : (
+                                                <div className="text-sm leading-relaxed whitespace-pre-line">{message.content}</div>
+                                            )}
 
                                             {message.sources && message.sources.length > 0 && (
                                                 <div className="mt-3 pt-3 border-t border-gray-200">

@@ -21,6 +21,7 @@
         // Session management - 7 days persistence
         const SESSION_EXPIRY_DAYS = 7;
         const SESSION_KEY = 'ai_chatbot_widget_session_' + chatbotId;
+        const CHAT_OPEN_STATE_KEY = 'ai_chatbot_is_open_' + chatbotId;
         
         let sessionId;
         
@@ -190,11 +191,25 @@
         // Add event listeners
         const toggleButton = document.getElementById('ai-chatbot-toggle');
         const iframe = document.getElementById('ai-chatbot-iframe');
-        let isOpen = false;
-
+        
         if (!toggleButton || !iframe) {
             console.error('AI Chatbot: Could not find toggle button or iframe elements');
             return;
+        }
+
+        // Load chat open state from localStorage
+        let isOpen = false;
+        const storedOpenState = localStorage.getItem(CHAT_OPEN_STATE_KEY);
+        console.log('AI Chatbot: Stored open state:', storedOpenState);
+        
+        if (storedOpenState === 'true') {
+            isOpen = true;
+            // Apply initial open state immediately
+            iframe.classList.add('show');
+            toggleButton.innerHTML = '✕';
+            console.log('AI Chatbot: Restoring open state from localStorage - Chat will open automatically');
+        } else {
+            console.log('AI Chatbot: No saved open state or chat was closed - Starting in closed state');
         }
 
         toggleButton.addEventListener('click', function(e) {
@@ -207,21 +222,34 @@
                 iframe.classList.remove('show');
                 toggleButton.innerHTML = iconContent;
                 isOpen = false;
+                localStorage.setItem(CHAT_OPEN_STATE_KEY, 'false');
                 console.log('Closing chat widget');
             } else {
                 iframe.classList.add('show');
                 toggleButton.innerHTML = '✕';
                 isOpen = true;
+                localStorage.setItem(CHAT_OPEN_STATE_KEY, 'true');
                 console.log('Opening chat widget');
             }
         });
 
         // Close when clicking outside
         document.addEventListener('click', function(event) {
+            // Only close if the widget is open AND the click is outside AND it's not a navigation click
             if (isOpen && !widgetContainer.contains(event.target)) {
+                // Check if the clicked element is a link that will navigate away
+                const clickedLink = event.target.closest('a');
+                if (clickedLink && clickedLink.href && !clickedLink.target) {
+                    // Don't close if clicking a link that will navigate - let the state persist
+                    console.log('AI Chatbot: Link clicked, preserving open state for next page');
+                    return;
+                }
+                
                 iframe.classList.remove('show');
                 toggleButton.innerHTML = iconContent;
                 isOpen = false;
+                localStorage.setItem(CHAT_OPEN_STATE_KEY, 'false');
+                console.log('AI Chatbot: Closing due to outside click');
             }
         });
 
@@ -233,6 +261,7 @@
                 iframe.classList.remove('show');
                 toggleButton.innerHTML = iconContent;
                 isOpen = false;
+                localStorage.setItem(CHAT_OPEN_STATE_KEY, 'false');
             } else if (event.data.type === 'ai-chatbot-resize') {
                 // Handle dynamic resize if needed
                 const { width, height } = event.data;
