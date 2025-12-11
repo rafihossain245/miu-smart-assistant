@@ -396,17 +396,30 @@ export default function EmbedView({ chatbot }) {
     };
 
     const handleMenuClick = (mode, type = null) => {
-        setQueryMode(mode);
-        setSelectedSqlType(type);
-        setShowMenu(false);
+        if (mode === 'general') {
+            setQueryMode(mode);
+            setSelectedSqlType(type);
+            setShowMenu(false);
+        } else if (mode === 'sql' && !type) {
+            setQueryMode(mode);
+            setSelectedSqlType(type);
+        } else if (mode === 'sql' && type) {
+            setSelectedSqlType(type);
+            setShowMenu(false);
+        }
         
         // Set appropriate placeholder based on selection
         if (mode === 'sql' && type) {
             const placeholders = {
                 'invoice': 'Enter email to view invoices',
-                'user': 'Enter email to view user information', 
-                'product-details': 'View product details',
-                'product-stock': 'View product stock information',
+                'user': 'Enter email to view user information',
+                'order': 'Enter email to view orders',
+                'account': 'Enter email to view account details',
+                'support': 'Enter email to view support tickets',
+                'payment': 'Enter email or invoice number to view payments',
+                'subscription': 'Enter email to view subscription status',
+                'renewal': 'Enter email to view upcoming renewals',
+                'stock-status': 'Enter product name to check stock',
                 'other': 'Enter your database query'
             };
             // You could set a temporary placeholder or guide message
@@ -449,8 +462,13 @@ export default function EmbedView({ chatbot }) {
             switch (selectedSqlType) {
                 case 'invoice': return 'Enter email to view invoices...';
                 case 'user': return 'Enter email to view user information...';
-                case 'product-details': return 'Enter product name to see details...';
-                case 'product-stock': return 'View stock information...';
+                case 'order': return 'Enter email to view orders...';
+                case 'account': return 'Enter email to view account details...';
+                case 'support': return 'Enter email to view support tickets...';
+                case 'payment': return 'Enter email or invoice number to view payments...';
+                case 'subscription': return 'Enter email to view subscription status...';
+                case 'renewal': return 'Enter email to view upcoming renewals...';
+                case 'stock-status': return 'Enter product name to check stock...';
                 case 'other': return 'Enter your database query...';
                 default: return 'Choose a query type from the menu...';
             }
@@ -709,37 +727,103 @@ export default function EmbedView({ chatbot }) {
                     {/* Input Area */}
                     <div className="p-4 border-t border-gray-200 relative">
                         {showMenu && (
-                            <div className="absolute bottom-full left-0 mb-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                            <div className="absolute bottom-full left-0 mb-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-50 overflow-y-auto">
                                 <div className="p-2">
-                                    <button
-                                        onClick={() => handleMenuClick('general')}
-                                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
-                                            queryMode === 'general' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
-                                        }`}
-                                    >
-                                        🤖 General
-                                        {/* <span className="block text-xs text-gray-500 mt-1">AI-powered answers from knowledge base</span> */}
-                                    </button>
-                                    
-                                    <button
-                                        onClick={() => handleMenuClick('sql')}
-                                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors mt-1 ${
-                                            queryMode === 'sql' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'
-                                        }`}
-                                    >
-                                        🗄️ SQL
-                                        {/* <span className="block text-xs text-gray-500 mt-1">Direct database queries</span> */}
-                                    </button>
+                                    {queryMode === 'general' && (
+                                        <>
+                                            <button
+                                                onClick={() => handleMenuClick('general')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    queryMode === 'general' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700'
+                                                }`}
+                                            >
+                                                🤖 General
+                                                {/* <span className="block text-xs text-gray-500 mt-1">AI-powered answers from knowledge base</span> */}
+                                            </button>
+                                            
+                                            <button
+                                                onClick={() => handleMenuClick('sql')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors mt-1 ${
+                                                    queryMode === 'sql' ? 'bg-green-50 text-green-700 font-medium' : 'text-gray-700'
+                                                }`}
+                                            >
+                                                🗄️ SQL
+                                                {/* <span className="block text-xs text-gray-500 mt-1">Direct database queries</span> */}
+                                            </button>
+                                        </>    
+                                    )}
                                     
                                     {queryMode === 'sql' && (
                                         <div className="mt-2 ml-4 space-y-1">
+                                            <button
+                                                onClick={() => { setQueryMode('general'); setSelectedSqlType(null); }}
+                                                className="w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors text-gray-700"
+                                            >
+                                                ← Back
+                                            </button>
                                             <button
                                                 onClick={() => handleMenuClick('sql', 'invoice')}
                                                 className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
                                                     selectedSqlType === 'invoice' ? 'bg-green-100 text-green-800' : 'text-gray-600'
                                                 }`}
                                             >
-                                                📄 Invoice
+                                                📄 Invoices
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'order')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'order' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                🛒 Orders
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'payment')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'payment' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                💳 Payments
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'account')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'account' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                👤 Account
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'subscription')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'subscription' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                📅 Subscriptions
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'renewal')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'renewal' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                🔔 Renewals
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'support')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'support' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                🎫 Support Tickets
+                                            </button>
+                                            <button
+                                                onClick={() => handleMenuClick('sql', 'stock-status')}
+                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
+                                                    selectedSqlType === 'stock-status' ? 'bg-green-100 text-green-800' : 'text-gray-600'
+                                                }`}
+                                            >
+                                                📊 Stock Status
                                             </button>
                                             <button
                                                 onClick={() => handleMenuClick('sql', 'user')}
@@ -747,31 +831,7 @@ export default function EmbedView({ chatbot }) {
                                                     selectedSqlType === 'user' ? 'bg-green-100 text-green-800' : 'text-gray-600'
                                                 }`}
                                             >
-                                                👤 User
-                                            </button>
-                                            <button
-                                                onClick={() => handleMenuClick('sql', 'product-details')}
-                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
-                                                    selectedSqlType === 'product-details' ? 'bg-green-100 text-green-800' : 'text-gray-600'
-                                                }`}
-                                            >
-                                                📦 Product
-                                            </button>
-                                            <button
-                                                onClick={() => handleMenuClick('sql', 'product-stock')}
-                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
-                                                    selectedSqlType === 'product-stock' ? 'bg-green-100 text-green-800' : 'text-gray-600'
-                                                }`}
-                                            >
-                                                📊 Stock
-                                            </button>
-                                            <button
-                                                onClick={() => handleMenuClick('sql', 'other')}
-                                                className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-50 transition-colors ${
-                                                    selectedSqlType === 'other' ? 'bg-green-100 text-green-800' : 'text-gray-600'
-                                                }`}
-                                            >
-                                                🔍 Other
+                                                🔍 User Search
                                             </button>
                                         </div>
                                     )}
