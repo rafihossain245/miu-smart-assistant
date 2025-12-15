@@ -13,7 +13,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 
 Route::get('/', function () {
-    return view('home');
+    return redirect('login');
 });
 
 // Frontend Routes
