@@ -7,14 +7,23 @@ services:
     restart: unless-stopped
     working_dir: /var/www/html
     ports:
-      - "9000:9000"
+      - "9001:9000"
       - "8080:8080"
     volumes:
       - .:/var/www/html
     networks:
       - aibot_net
     depends_on:
-      - db
+      db:
+        condition: service_started
+    environment:
+      - CRM_DB_HOST=${CRM_DB_HOST:-host.docker.internal}
+      - CRM_DB_PORT=${CRM_DB_PORT:-3307}
+      - CRM_DB_DATABASE=${CRM_DB_DATABASE:-perfexcrm}
+      - CRM_DB_USERNAME=${CRM_DB_USERNAME:-root}
+      - CRM_DB_PASSWORD=${CRM_DB_PASSWORD}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
   
   db:
     image: ankane/pgvector:latest

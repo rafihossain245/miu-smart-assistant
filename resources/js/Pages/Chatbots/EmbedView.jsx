@@ -4,7 +4,7 @@ import { PaperAirplaneIcon, XMarkIcon, ChatBubbleLeftRightIcon, ClipboardDocumen
 import { ClipboardDocumentCheckIcon } from '@heroicons/react/24/solid';
 import ReactMarkdown from 'react-markdown';
 
-export default function EmbedView({ chatbot }) {
+export default function EmbedView({ chatbot, tenant_id }) {
     // Session management
     const SESSION_EXPIRY_DAYS = 7;
     const SESSION_KEY = `ai_chatbot_embed_session_${chatbot.id}`;
@@ -503,6 +503,7 @@ export default function EmbedView({ chatbot }) {
                     message: userMessage.content,
                     chatbot_id: chatbot.id,
                     session_id: sessionId, // Use persistent session ID
+                    tenant_id: tenant_id, // Add tenant ID for database isolation
                     query_mode: queryMode, // Add query mode
                     sql_type: selectedSqlType, // Add SQL type if applicable
                 }),

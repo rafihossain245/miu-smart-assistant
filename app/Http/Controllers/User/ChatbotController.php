@@ -275,18 +275,6 @@ class ChatbotController extends Controller
         return back()->with('message', "Sync initiated for all {$sources->count()} sources!");
     }
 
-    public function embedView(Chatbot $chatbot)
-    {
-        // This is a public route, so we need to check if chatbot is active
-        if (!$chatbot->is_active) {
-            abort(404, 'Chatbot not found or inactive');
-        }
-
-        return Inertia::render('Chatbots/EmbedView', [
-            'chatbot' => $chatbot,
-        ]);
-    }
-
     public function conversations(Chatbot $chatbot)
     {
         $this->authorize('view', $chatbot);
@@ -732,5 +720,24 @@ class ChatbotController extends Controller
         }
 
         return $examples;
+    }
+
+    /**
+     * Display the chatbot embed view (public)
+     */
+    public function embedView(Request $request, Chatbot $chatbot)
+    {
+        // This is a public route, so we need to check if chatbot is active
+        if (!$chatbot->is_active) {
+            abort(404, 'Chatbot not found or inactive');
+        }
+
+        // Get tenant_id from request if provided
+        $tenantId = $request->get('tenant_id');
+
+        return Inertia::render('Chatbots/EmbedView', [
+            'chatbot' => $chatbot,
+            'tenant_id' => $tenantId,
+        ]);
     }
 }

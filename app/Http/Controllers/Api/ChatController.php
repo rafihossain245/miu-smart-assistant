@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Chatbot;
 use App\Models\Conversation;
 use App\Services\RAGService;
+use App\Services\TenantDatabaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +29,7 @@ class ChatController extends Controller
             'message' => 'required|string|max:1000',
             'chatbot_id' => 'required|exists:chatbots,id',
             'session_id' => 'nullable|string|max:255',
+            'tenant_id' => 'nullable|string|max:255',
             'query_mode' => 'nullable|in:general,sql',
             'sql_type' => 'nullable|string',
         ]);
@@ -48,12 +50,32 @@ class ChatController extends Controller
                 ], 403);
             }
 
+            // Get tenant ID and set up database connection
+            $tenantId = $request->tenant_id;
+            $crmConnection = TenantDatabaseService::setTenantConnection($tenantId);
+
             $queryMode = $request->query_mode ?? 'general';
             $sqlType = $request->sql_type;
 
             if ($queryMode === 'sql' && $sqlType) {
                 $email = $this->extractEmail($request->message);
                 
+                $isAdmin = DB::connection($crmConnection)
+                ->table('tblstaff')
+                ->where('admin', 1)
+                ->first();
+    
+                $wantsMyAccount = preg_match('/\b(my|me|my account|show my)\b/i', $request->message);
+    
+                $targetEmail = null;
+                if ($wantsMyAccount) {
+                    $targetEmail = DB::connection($crmConnection)->table('tblstaff')->where('email', $email)->first();
+                } elseif ($email) {
+                    $targetEmail = $email;
+                }
+
+                // dd($targetEmail);
+
                 switch ($sqlType) {
                     case 'invoice':
                         if (!$email) {
@@ -64,7 +86,7 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleInvoiceQuery($email);
+                        $response = $this->handleInvoiceQuery($email, $crmConnection);
                         break;
                         
                     case 'user':
@@ -76,7 +98,7 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleUserQuery($email);
+                        $response = $this->handleUserQuery($email, $crmConnection);
                         break;
                         
                     case 'order':
@@ -88,11 +110,11 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleOrderQuery($email);
+                        $response = $this->handleOrderQuery($email, $crmConnection);
                         break;
                         
                     case 'account':
-                        if (!$email) {
+                        if (!$targetEmail) {
                             return response()->json([
                                 'reply' => 'Please provide your email address to view your account details.',
                                 'sources' => [],
@@ -100,7 +122,7 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleAccountQuery($email);
+                        $response = $this->handleAccountQuery($targetEmail, $crmConnection);
                         break;
                         
                     case 'support':
@@ -112,16 +134,16 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleSupportQuery($email);
+                        $response = $this->handleSupportQuery($email, $crmConnection);
                         break;
                         
                     case 'payment':
                         // Try to extract invoice number first, then email
                         $invoiceNumber = $this->extractInvoiceNumber($request->message);
                         if ($invoiceNumber) {
-                            $response = $this->handlePaymentHistoryByInvoice($invoiceNumber);
+                            $response = $this->handlePaymentHistoryByInvoice($invoiceNumber, $crmConnection);
                         } elseif ($email) {
-                            $response = $this->handlePaymentHistory($email);
+                            $response = $this->handlePaymentHistory($email, $crmConnection);
                         } else {
                             return response()->json([
                                 'reply' => 'Please provide either your email address or invoice number to view payment history.',
@@ -141,7 +163,7 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleSubscriptionStatus($email);
+                        $response = $this->handleSubscriptionStatus($email, $crmConnection);
                         break;
                         
                     case 'renewal':
@@ -153,11 +175,11 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleUpcomingRenewals($email);
+                        $response = $this->handleUpcomingRenewals($email, $crmConnection);
                         break;
                         
                     case 'stock-status':
-                        $response = $this->handleStockStatus($request->message);
+                        $response = $this->handleStockStatus($request->message, $crmConnection);
                         break;
                         
                     case 'other':
@@ -234,14 +256,14 @@ class ChatController extends Controller
         return null;
     }
 
-    private function handleUserQuery(?string $email): string
+    private function handleUserQuery(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
             return "Please provide an email address to search for user information.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('firstname', 'lastname', 'email', 'phonenumber', 'active')
@@ -263,14 +285,14 @@ class ChatController extends Controller
         }
     }
 
-    private function handleOrderQuery(?string $email): string
+    private function handleOrderQuery(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
             return "Please provide your email address to view your orders.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('userid')
@@ -280,11 +302,11 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            $orders = DB::connection('crm')
+            $orders = DB::connection($connection)
                 ->table('tblorders')
                 ->where('clientid', $client->userid)
                 ->orderBy('datecreated', 'desc')
-                ->limit(5)
+                ->limit(10)
                 ->get(['id', 'status', 'total', 'datecreated']);
             
             if ($orders->isEmpty()) {
@@ -303,14 +325,14 @@ class ChatController extends Controller
         }
     }
 
-    private function handleInvoiceQuery(?string $email): string
+    private function handleInvoiceQuery(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
             return "Please provide your email address to view your invoices.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('userid')
@@ -320,11 +342,11 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            $invoices = DB::connection('crm')
+            $invoices = DB::connection($connection)
                 ->table('tblinvoices')
                 ->where('clientid', $client->userid)
                 ->orderBy('datecreated', 'desc')
-                ->limit(5)
+                ->limit(10)
                 ->get(['id', 'status', 'total', 'datecreated']);
             
             
@@ -344,45 +366,115 @@ class ChatController extends Controller
         }
     }
 
-    private function handleAccountQuery(?string $email): string
+    private function handleAccountQuery(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
-            return "Please provide your email address to view your account details.";
+            return "Please provide your email address to view account details.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblclients')
                 ->join('tblcontacts', 'tblclients.userid', '=', 'tblcontacts.userid')
                 ->where('tblcontacts.email', $email)
-                ->select('tblclients.company', 'tblclients.active', 'tblcontacts.firstname', 'tblcontacts.lastname')
+                ->select(
+                    'tblclients.userid',
+                    'tblclients.company',
+                    'tblclients.active',
+                    'tblclients.datecreated',
+                    'tblcontacts.firstname',
+                    'tblcontacts.lastname',
+                    'tblcontacts.email',
+                    'tblcontacts.phonenumber',
+                    DB::raw('(SELECT COUNT(*) FROM tblinvoices WHERE tblinvoices.clientid = tblclients.userid) as invoices_count'),
+                    DB::raw('(SELECT IFNULL(SUM(tblinvoices.total),0) FROM tblinvoices WHERE tblinvoices.clientid = tblclients.userid) as invoices_total'),
+                    DB::raw('(SELECT IFNULL(SUM(tblinvoicepaymentrecords.amount),0) FROM tblinvoicepaymentrecords WHERE tblinvoicepaymentrecords.invoiceid IN (SELECT id FROM tblinvoices WHERE clientid = tblclients.userid)) as payments_total')
+                )
                 ->first();
-            
+
             if (!$client) {
                 return "No account found with email {$email}.";
             }
 
-            $balance = 0;
-            
-            return "Here are your account details:\n\n" .
-                   "Name: {$client->firstname} {$client->lastname}\n" .
-                   "Company: {$client->company}\n" .
-                   "Status: " . ($client->active ? 'Active' : 'Inactive') . "\n" .
-                   "Account Balance: $" . number_format($balance, 2);
+            $balance = (float)$client->invoices_total - (float)$client->payments_total;
+
+            //recent invoices
+            $recentInvoices = DB::connection($connection)
+                ->table('tblinvoices')
+                ->where('clientid', $client->userid)
+                ->orderBy('datecreated', 'desc')
+                ->limit(5)
+                ->get(['id', 'status', 'total', 'datecreated']);
+
+            // recent payments
+            $recentPayments = DB::connection('crm')
+                ->table('tblinvoicepaymentrecords')
+                ->whereIn('invoiceid', function ($q) use ($client) {
+                    $q->select('id')->from('tblinvoices')->where('clientid', $client->userid);
+                })
+                ->orderBy('date', 'desc')
+                ->limit(5)
+                ->get(['id', 'invoiceid', 'amount', 'paymentmethod', 'paymentmode', 'transactionid', 'date']);
+
+            // recent orders
+            $recentOrders = DB::connection('crm')
+                ->table('tbltechoflyorder')
+                ->where('client_id', $client->userid)
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get(['id', 'status', 'created_at']);
+
+            $response = "Here are your account details:\n\n";
+            $response .= "Name: {$client->firstname} {$client->lastname}\n";
+            $response .= "Company: {$client->company}\n";
+            $response .= "Status: " . ($client->active ? 'Active' : 'Inactive') . "\n";
+            $response .= "Member Since: " . date('Y-m-d', strtotime($client->datecreated)) . "\n\n";
+            $response .= "Invoices: {$client->invoices_count} | Total: $" . number_format($client->invoices_total, 2) . " | Paid: $" . number_format($client->payments_total, 2) . " | Balance: $" . number_format($balance, 2) . "\n\n";
+
+            if ($recentInvoices->isNotEmpty()) {
+                $response .= "Recent Invoices:\n";
+                foreach ($recentInvoices as $inv) {
+                    $response .= "Invoice #{$inv->id}: {$inv->status} - $" . number_format($inv->total, 2) . " (" . date('Y-m-d', strtotime($inv->datecreated)) . ")\n";
+                }
+                $response .= "\n";
+            }
+
+            if ($recentPayments->isNotEmpty()) {
+                $response .= "Recent Payments:\n";
+                foreach ($recentPayments as $p) {
+                    $method = $p->paymentmethod ?: $p->paymentmode ?: 'N/A';
+                    $response .= "Payment #{$p->id}: $" . number_format($p->amount, 2) . " via {$method}";
+                    if ($p->transactionid) { $response .= " (Txn: {$p->transactionid})"; }
+                    $response .= " | Invoice #{$p->invoiceid} | " . date('Y-m-d', strtotime($p->date)) . "\n";
+                }
+                $response .= "\n";
+            }
+
+            if ($recentOrders->isNotEmpty()) {
+                $response .= "Recent Orders:\n";
+                foreach ($recentOrders as $o) {
+                    // $response .= "Order #{$o->id}: {$o->status} - $" . number_format($o->total, 2) . " (" . date('Y-m-d', strtotime($o->created_at)) . ")\n";
+                    $response .= "Order #{$o->id}: {$o->status} - " . date('Y-m-d', strtotime($o->created_at)) . "\n";
+                }
+                $response .= "\n";
+            }
+
+            $response .= "For complete history, ask: 'show all invoices', 'show all payments', 'show all orders', or 'show subscriptions'.";
+            return $response;
         } catch (\Exception $e) {
             Log::error('CRM Account Query Error: ' . $e->getMessage());
-            return "Sorry, I encountered an error while retrieving your account details. Please try again.";
+            return $e->getMessage(). "Sorry, I encountered an error while retrieving your account details. Please try again.";
         }
     }
 
-    private function handleSupportQuery(?string $email): string
+    private function handleSupportQuery(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
-            return "Please provide your email address to view your support tickets.";
+            return "Please provide your email address to view support tickets.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('userid')
@@ -392,7 +484,7 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            $tickets = DB::connection('crm')
+            $tickets = DB::connection($connection)
                 ->table('tbltickets')
                 ->where('userid', $client->userid)
                 ->orWhere('contactid', $client->userid)
@@ -416,14 +508,14 @@ class ChatController extends Controller
         }
     }
 
-    private function handlePaymentHistory(?string $email): string
+    private function handlePaymentHistory(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
             return "Please provide your email address to view payment history.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('userid')
@@ -434,7 +526,7 @@ class ChatController extends Controller
             }
 
             // Get invoice IDs for this client
-            $invoiceIds = DB::connection('crm')
+            $invoiceIds = DB::connection($connection)
                 ->table('tblinvoices')
                 ->where('clientid', $client->userid)
                 ->pluck('id');
@@ -444,11 +536,11 @@ class ChatController extends Controller
             }
 
             // Get payment records directly using invoice IDs
-            $payments = DB::connection('crm')
+            $payments = DB::connection($connection)
                 ->table('tblinvoicepaymentrecords')
                 ->whereIn('invoiceid', $invoiceIds)
                 ->orderBy('date', 'desc')
-                ->limit(10)
+                ->limit(20)
                 ->get(['id', 'invoiceid', 'amount', 'paymentmode', 'paymentmethod', 'date', 'transactionid']);
 
             if ($payments->isEmpty()) {
@@ -472,7 +564,7 @@ class ChatController extends Controller
         }
     }
 
-    private function handlePaymentHistoryByInvoice(?string $invoiceNumber): string
+    private function handlePaymentHistoryByInvoice(?string $invoiceNumber, string $connection = 'crm'): string
     {
         if (!$invoiceNumber) {
             return "Please provide an invoice number to view payment history.";
@@ -480,7 +572,7 @@ class ChatController extends Controller
 
         try {
             // Check if invoice exists
-            $invoice = DB::connection('crm')
+            $invoice = DB::connection($connection)
                 ->table('tblinvoices')
                 ->where('id', $invoiceNumber)
                 ->first(['id', 'clientid', 'total', 'status']);
@@ -490,15 +582,13 @@ class ChatController extends Controller
             }
 
             // Get payment records for this invoice
-            $payments = DB::connection('crm')
+            $payments = DB::connection($connection)
                 ->table('tblinvoicepaymentrecords')
-                ->select('tblinvoicepaymentrecords.*','tblpayment_modes.name as mode_name')
+                ->select('tblinvoicepaymentrecords.id', 'tblinvoicepaymentrecords.invoiceid', 'tblinvoicepaymentrecords.amount', 'tblinvoicepaymentrecords.paymentmethod', 'tblinvoicepaymentrecords.paymentmode', 'tblinvoicepaymentrecords.transactionid', 'tblinvoicepaymentrecords.date', 'tblpayment_modes.name as mode_name')
                 ->leftJoin('tblpayment_modes', 'tblpayment_modes.id', '=', 'tblinvoicepaymentrecords.paymentmode')
                 ->where('tblinvoicepaymentrecords.invoiceid', $invoiceNumber)
                 ->orderBy('tblinvoicepaymentrecords.date', 'desc')
-                ->get([
-                    
-                ]);
+                ->get();
 
             if ($payments->isEmpty()) {
                 return "No payments found for Invoice #{$invoiceNumber}.\n\n" .
@@ -529,14 +619,14 @@ class ChatController extends Controller
         }
     }
 
-    private function handleSubscriptionStatus(?string $email): string
+    private function handleSubscriptionStatus(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
             return "Please provide your email address to view subscription status.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('userid')
@@ -546,25 +636,50 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            $subscriptions = DB::connection('crm')
-                ->table('tblsubscriptions')
-                ->where('clientid', $client->userid)
-                ->orderBy('date_subscribed', 'desc')
-                ->get(['id', 'name', 'status', 'date_subscribed', 'next_billing_cycle']);
+            $subscriptions = DB::connection($connection)
+                ->table('tblclient_plan')
+                ->where('userid', $client->userid)
+                ->orderBy('subscription_start_date', 'desc')
+                ->get(['id', 'tenants_name', 'subscription_status', 'trial_days', 'subscription_start_date', 'subscription_end_date', 'trial_start_time']);
             
             if ($subscriptions->isEmpty()) {
-                return "No active subscriptions found for your account.";
+                return "No subscriptions found for your account.";
             }
 
             $response = "Here are your subscriptions:\n\n";
             foreach ($subscriptions as $sub) {
-                $statusLabel = $sub->status === 'active' ? '✓ Active' : '✗ Inactive';
-                $response .= "Subscription: {$sub->name} - {$statusLabel}\n";
-                $response .= "Subscribed: " . date('Y-m-d', strtotime($sub->date_subscribed));
-                if ($sub->next_billing_cycle) {
-                    $response .= " | Next Billing: " . date('Y-m-d', strtotime($sub->next_billing_cycle));
+                $statusLabel = match($sub->subscription_status) {
+                    'active' => '✓ Active',
+                    'trial' => '🧪 Trial',
+                    'expired' => '✗ Expired',
+                    'cancelled' => '✗ Cancelled',
+                    default => 'Unknown'
+                };
+                
+                $response .= "Subscription: {$sub->tenants_name} - {$statusLabel}\n";
+                
+                if ($sub->subscription_status === 'trial') {
+                    $trialStart = $sub->trial_start_time ? strtotime($sub->trial_start_time) : null;
+                    $trialDays = (int)($sub->trial_days ?? 0);
+                    if ($trialStart && $trialDays > 0) {
+                        $trialEnd = strtotime("+{$trialDays} days", $trialStart);
+                        $daysLeft = ceil(($trialEnd - time()) / (60*60*24));
+                        $response .= "{$daysLeft} days remaining (ends " . date('Y-m-d', $trialEnd) . ")\n";
+                    } else {
+                        $response .= "{$trialDays} days\n";
+                    }
+                } elseif ($sub->subscription_status === 'active') {
+                    if ($sub->subscription_end_date) {
+                        $response .= "Expires: " . date('Y-m-d', strtotime($sub->subscription_end_date));
+                    }
+                    $response .= "\n";
+                } else {
+                    if ($sub->subscription_end_date) {
+                        $response .= "Ended: " . date('Y-m-d', strtotime($sub->subscription_end_date)) . "\n";
+                    }
                 }
-                $response .= "\n\n";
+                
+                $response .= "Started: " . date('Y-m-d', strtotime($sub->subscription_start_date ?? $sub->trial_start_time ?? now())) . "\n\n";
             }
             
             return $response;
@@ -574,14 +689,14 @@ class ChatController extends Controller
         }
     }
 
-    private function handleUpcomingRenewals(?string $email): string
+    private function handleUpcomingRenewals(?string $email, string $connection = 'crm'): string
     {
         if (!$email) {
             return "Please provide your email address to view upcoming renewals.";
         }
 
         try {
-            $client = DB::connection('crm')
+            $client = DB::connection($connection)
                 ->table('tblcontacts')
                 ->where('email', $email)
                 ->select('userid')
@@ -591,25 +706,44 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            // Get renewals from subscriptions
-            $renewals = DB::connection('crm')
-                ->table('tblsubscriptions')
-                ->where('clientid', $client->userid)
-                ->where('status', 'active')
-                ->whereNotNull('next_billing_cycle')
-                ->where('next_billing_cycle', '>=', now())
-                ->where('next_billing_cycle', '<=', now()->addDays(60))
-                ->orderBy('next_billing_cycle', 'asc')
-                ->get(['id', 'name', 'next_billing_cycle']);
+            // Get renewals from subscriptions (active or trial)
+            $renewals = DB::connection($connection)
+                ->table('tblclient_plan')
+                ->where('userid', $client->userid)
+                ->whereIn('subscription_status', ['active', 'trial'])
+                ->get(['id', 'tenants_name', 'subscription_status', 'subscription_end_date', 'trial_days', 'trial_start_time']);
+            
+            // Filter and calculate end dates
+            $filteredRenewals = collect();
+            foreach ($renewals as $renewal) {
+                $endDate = null;
+                if ($renewal->subscription_status === 'active' && $renewal->subscription_end_date) {
+                    $endDate = $renewal->subscription_end_date;
+                } elseif ($renewal->subscription_status === 'trial') {
+                    $trialStart = $renewal->trial_start_time ? strtotime($renewal->trial_start_time) : null;
+                    $trialDays = (int)($renewal->trial_days ?? 0);
+                    if ($trialStart && $trialDays > 0) {
+                        $endDate = date('Y-m-d H:i:s', strtotime("+{$trialDays} days", $trialStart));
+                    }
+                }
+                
+                if ($endDate && strtotime($endDate) >= time() && strtotime($endDate) <= strtotime('+60 days')) {
+                    $renewal->calculated_end_date = $endDate;
+                    $filteredRenewals->push($renewal);
+                }
+            }
+            
+            $renewals = $filteredRenewals->sortBy('calculated_end_date');
             
             if ($renewals->isEmpty()) {
-                return "No upcoming renewals in the next 60 days for your account.";
+                return "No upcoming expirations in the next 60 days for your account.";
             }
 
-            $response = "Here are your upcoming renewals:\n\n";
+            $response = "Here are your upcoming expirations:\n\n";
             foreach ($renewals as $renewal) {
-                $daysUntil = now()->diffInDays($renewal->next_billing_cycle);
-                $response .= "• {$renewal->name} - Renews on " . date('Y-m-d', strtotime($renewal->next_billing_cycle)) . " ({$daysUntil} days)\n";
+                $daysUntil = ceil(now()->diffInDays($renewal->calculated_end_date));
+                $status = $renewal->subscription_status === 'trial' ? ' (Trial)' : '';
+                $response .= "• {$renewal->tenants_name}{$status} - Expires on " . date('Y-m-d', strtotime($renewal->calculated_end_date)) . " ({$daysUntil} days)\n";
             }
             
             return $response;
@@ -619,21 +753,21 @@ class ChatController extends Controller
         }
     }
 
-    private function handleStockStatus(string $message): string
+    private function handleStockStatus(string $message, string $connection = 'crm'): string
     {
         try {
-            $product = DB::connection('crm')
+            $product = DB::connection($connection)
                 ->table('tblitems')
                 ->select('id', 'description')
                 ->where('description', 'like', '%' . $message . '%')
                 ->first();
-            
-            if (!$product) {
-                return "Product not found. Please provide the correct product name.";
-            }
-
-            $warehouse_id = 1;
-            $inventory_stock = DB::connection('crm')
+                
+                if (!$product) {
+                    return "Product not found. Please provide the correct product name.";
+                }
+                
+                $warehouse_id = 1;
+                $inventory_stock = DB::connection($connection)
                 ->table('tblinventory_manage')
                 ->select(DB::raw('sum(inventory_number) as total_stock'))
                 ->where('warehouse_id', $warehouse_id)

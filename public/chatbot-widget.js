@@ -16,12 +16,13 @@
 
         const config = window.aiChatbot.config || {};
         const chatbotId = window.aiChatbot.chatbotId;
+        const tenantId = window.aiChatbot.tenantId || null;
         const baseUrl = window.aiChatbot.baseUrl;
 
         // Session management - 7 days persistence
         const SESSION_EXPIRY_DAYS = 7;
-        const SESSION_KEY = 'ai_chatbot_widget_session_' + chatbotId;
-        const CHAT_OPEN_STATE_KEY = 'ai_chatbot_is_open_' + chatbotId;
+        const SESSION_KEY = 'ai_chatbot_widget_session_' + chatbotId + (tenantId ? '_' + tenantId : '');
+        const CHAT_OPEN_STATE_KEY = 'ai_chatbot_is_open_' + chatbotId + (tenantId ? '_' + tenantId : '');
         
         let sessionId;
         
@@ -177,7 +178,7 @@
                 <iframe
                     class="ai-chatbot-iframe"
                     id="ai-chatbot-iframe"
-                    src="${baseUrl}/embed/${chatbotId}?session_id=${sessionId}"
+                    src="${baseUrl}/embed/${chatbotId}?session_id=${sessionId}${tenantId ? '&tenant_id=' + tenantId : ''}"
                     title="AI Chatbot">
                 </iframe>
             </div>
