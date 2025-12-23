@@ -163,7 +163,10 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleSubscriptionStatus($email, $crmConnection);
+                        // Check if user is from tenant or main database
+                        $isFromTenant = !empty($tenantId) && $tenantId !== 'perfexcrm' && $tenantId !== 'crm';
+                        // Always use main CRM connection for subscriptions (tblclient_plan only exists in main DB)
+                        $response = $this->handleSubscriptionStatus($email, 'crm', $isFromTenant, $tenantId);
                         break;
                         
                     case 'renewal':
@@ -175,7 +178,10 @@ class ChatController extends Controller
                                 'show_contact_info' => false
                             ]);
                         }
-                        $response = $this->handleUpcomingRenewals($email, $crmConnection);
+                        // Check if user is from tenant or main database
+                        $isFromTenant = !empty($tenantId) && $tenantId !== 'perfexcrm' && $tenantId !== 'crm';
+                        // Always use main CRM connection for renewals (tblclient_plan only exists in main DB)
+                        $response = $this->handleUpcomingRenewals($email, 'crm', $isFromTenant, $tenantId);
                         break;
                         
                     case 'stock-status':
@@ -302,12 +308,21 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
+            // $orders = DB::connection($connection)
+            //     ->table('tblorders')
+            //     ->where('clientid', $client->userid)
+            //     ->orderBy('datecreated', 'desc')
+            //     ->limit(10)
+            //     ->get(['id', 'status', 'total', 'datecreated']);
+
+
+
             $orders = DB::connection($connection)
-                ->table('tblorders')
-                ->where('clientid', $client->userid)
-                ->orderBy('datecreated', 'desc')
-                ->limit(10)
-                ->get(['id', 'status', 'total', 'datecreated']);
+                ->table('tbltechoflyorder')
+                ->where('client_id', $client->userid)
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get(['id', 'status', 'created_at']);
             
             if ($orders->isEmpty()) {
                 return "No orders found for your account.";
@@ -315,7 +330,7 @@ class ChatController extends Controller
 
             $response = "Here are your recent orders:\n\n";
             foreach ($orders as $order) {
-                $response .= "Order #{$order->id}: Status - {$order->status}, Total - $" . number_format($order->total, 2) . ", Date - " . date('Y-m-d', strtotime($order->datecreated)) . "\n";
+                $response .= "Order #{$order->id}: Status - {$order->status}, Date - " . date('Y-m-d', strtotime($order->created_at)) . "\n";
             }
             
             return $response;
@@ -619,7 +634,7 @@ class ChatController extends Controller
         }
     }
 
-    private function handleSubscriptionStatus(?string $email, string $connection = 'crm'): string
+    private function handleSubscriptionStatus(?string $email, string $connection = 'crm', bool $restrictToOwnEmail = false, ?string $tenantId = null): string
     {
         if (!$email) {
             return "Please provide your email address to view subscription status.";
@@ -636,9 +651,17 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            $subscriptions = DB::connection($connection)
+            // Build query for subscriptions
+            $query = DB::connection($connection)
                 ->table('tblclient_plan')
-                ->where('userid', $client->userid)
+                ->where('userid', $client->userid);
+
+            // Security: If from tenant portal, restrict to current tenant only
+            if ($restrictToOwnEmail && $tenantId) {
+                $query->where('tenants_db', $tenantId);
+            }
+
+            $subscriptions = $query
                 ->orderBy('subscription_start_date', 'desc')
                 ->get(['id', 'tenants_name', 'subscription_status', 'trial_days', 'subscription_start_date', 'subscription_end_date', 'trial_start_time']);
             
@@ -689,7 +712,7 @@ class ChatController extends Controller
         }
     }
 
-    private function handleUpcomingRenewals(?string $email, string $connection = 'crm'): string
+    private function handleUpcomingRenewals(?string $email, string $connection = 'crm', bool $restrictToOwnEmail = false, ?string $tenantId = null): string
     {
         if (!$email) {
             return "Please provide your email address to view upcoming renewals.";
@@ -706,12 +729,19 @@ class ChatController extends Controller
                 return "No user found with email {$email}.";
             }
 
-            // Get renewals from subscriptions (active or trial)
-            $renewals = DB::connection($connection)
+            // Build query for renewals
+            $query = DB::connection($connection)
                 ->table('tblclient_plan')
                 ->where('userid', $client->userid)
-                ->whereIn('subscription_status', ['active', 'trial'])
-                ->get(['id', 'tenants_name', 'subscription_status', 'subscription_end_date', 'trial_days', 'trial_start_time']);
+                ->whereIn('subscription_status', ['active', 'trial']);
+
+            // Security: If from tenant portal, restrict to current tenant only
+            if ($restrictToOwnEmail && $tenantId) {
+                $query->where('tenants_db', $tenantId);
+            }
+
+            // Get renewals from subscriptions (active or trial)
+            $renewals = $query->get(['id', 'tenants_name', 'subscription_status', 'subscription_end_date', 'trial_days', 'trial_start_time']);
             
             // Filter and calculate end dates
             $filteredRenewals = collect();
