@@ -86,9 +86,12 @@ class ProcessSourceContent implements ShouldQueue
             // Update content if extracted from external source
             if (!in_array($this->source->type, ['text', 'technical_issue'])) {
                 $updateData = [
-                    'title' => $extractedData['title'],
                     'content' => $extractedData['content'],
                 ];
+
+                if (empty($this->source->title) || preg_match('/^[a-zA-Z0-9]{40,}$/', $this->source->title)) {
+                    $updateData['title'] = $extractedData['title'];
+                }
 
                 // Include metadata if available (from AI-enhanced extraction)
                 if (isset($extractedData['metadata'])) {
@@ -120,21 +123,70 @@ class ProcessSourceContent implements ShouldQueue
             // Chunk content for better embedding
             $chunks = $openAIService->chunkText($extractedData['content'], 1000);
 
-            // For simplicity, we'll use the first chunk or full content for embedding
-            $contentForEmbedding = !empty($chunks) ? $chunks[0] : $extractedData['content'];
+            // Check if this source has already been chunked (has chunks or is a chunk itself)
+            $alreadyChunked = $this->source->hasChunks() || $this->source->isChunk();
 
-            // Generate embedding
-            $embedding = $openAIService->generateEmbedding($contentForEmbedding);
+            if (count($chunks) > 1 && !$alreadyChunked) {
+                // This is a multi-chunk document - create parent-child structure
+                $parentSourceId = $this->source->id;
+                
+                foreach ($chunks as $index => $chunk) {
+                    if ($index === 0) {
+                        // Update current source as first chunk
+                        $embedding = $openAIService->generateEmbedding($chunk);
+                        $this->source->update([
+                            'content' => $chunk,
+                            'embedding' => $embedding,
+                            'status' => 'completed',
+                            'chunk_index' => 0,
+                            'total_chunks' => count($chunks),
+                            'error_message' => null,
+                        ]);
 
-            // Update source with embedding and mark as completed
-            $this->source->update([
-                'embedding' => $embedding,
-                'status' => 'completed',
-                'error_message' => null,
-            ]);
+                        // Fire processing completed event
+                        event(new SourceProcessingCompleted($this->source));
 
-            // Fire processing completed event
-            event(new SourceProcessingCompleted($this->source));
+                        Log::info("Processed chunk {$index} of " . count($chunks) . " for source {$this->source->id}");
+
+                    } else {
+                        // Create new sources for remaining chunks
+                        $embedding = $openAIService->generateEmbedding($chunk);
+                        
+                        $chunkSource = Source::create([
+                            'chatbot_id' => $this->source->chatbot_id,
+                            'parent_source_id' => $parentSourceId,
+                            'type' => $this->source->type . '_chunk',
+                            'title' => $this->source->title . " (Part " . ($index + 1) . ")",
+                            'url' => $this->source->url,
+                            'content' => $chunk,
+                            'embedding' => $embedding,
+                            'status' => 'completed',
+                            'chunk_index' => $index,
+                            'total_chunks' => count($chunks),
+                            'metadata' => [
+                                'is_chunk' => true,
+                                'parent_id' => $parentSourceId,
+                            ]
+                        ]);
+
+                        // Fire source created event for new chunk sources
+                        event(new SourceCreated($chunkSource));
+
+                        Log::info("Processed chunk {$index} of " . count($chunks) . " for source {$this->source->id} - created chunk source {$chunkSource->id}");
+                    }
+
+                }
+            } else {
+                // Single chunk - process normally
+                $contentForEmbedding = !empty($chunks) ? $chunks[0] : $extractedData['content'];
+                $embedding = $openAIService->generateEmbedding($contentForEmbedding);
+                
+                $this->source->update([
+                    'embedding' => $embedding,
+                    'status' => 'completed',
+                    'error_message' => null,
+                ]);
+            }
 
             Log::info("Successfully processed source {$this->source->id}");
 

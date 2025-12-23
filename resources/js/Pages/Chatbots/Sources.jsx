@@ -13,6 +13,9 @@ const sourceTypeIcons = {
     sitemap: MapIcon,
     youtube_playlist: QueueListIcon,
     technical_issue: WrenchScrewdriverIcon,
+
+    //Additional types can be mapped here
+    pdf_chunk: DocumentTextIcon,
 };
 
 const statusColors = {

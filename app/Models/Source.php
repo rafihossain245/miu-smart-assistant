@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\DB;
 
 class Source extends Model
@@ -19,6 +20,9 @@ class Source extends Model
         'error_message',
         'metadata',
         'priority_score',
+        'chunk_index',
+        'parent_source_id',
+        'total_chunks',
     ];
 
     protected $casts = [
@@ -49,6 +53,38 @@ class Source extends Model
     public function scopeFailed($query)
     {
         return $query->where('status', 'failed');
+    }
+
+    /**
+     * Check if this source is a chunk (has a parent)
+     */
+    public function isChunk(): bool
+    {
+        return $this->parent_source_id !== null;
+    }
+
+    /**
+     * Check if this source has child chunks
+     */
+    public function hasChunks(): bool
+    {
+        return static::where('parent_source_id', $this->id)->exists();
+    }
+
+    /**
+     * Get the parent source relationship
+     */
+    public function parentSource(): BelongsTo
+    {
+        return $this->belongsTo(Source::class, 'parent_source_id');
+    }
+
+    /**
+     * Get the child chunks relationship
+     */
+    public function chunks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Source::class, 'parent_source_id');
     }
 
     public static function findSimilar(array $queryEmbedding, int $chatbotId, int $limit = 5): \Illuminate\Support\Collection

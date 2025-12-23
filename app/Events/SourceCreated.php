@@ -59,6 +59,9 @@ class SourceCreated implements ShouldBroadcast
                 'url' => $this->source->url,
                 'content' => $this->source->content ? substr($this->source->content, 0, 100) . '...' : null,
                 'status' => $this->source->status,
+                'chunk_index' => $this->source->chunk_index,
+                'total_chunks' => $this->source->total_chunks,
+                'parent_source_id' => $this->source->parent_source_id,
                 'created_at' => $this->source->created_at?->toISOString(),
                 'updated_at' => $this->source->updated_at?->toISOString(),
             ]
