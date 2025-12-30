@@ -16,6 +16,9 @@ const sourceTypeIcons = {
 
     //Additional types can be mapped here
     pdf_chunk: DocumentTextIcon,
+    url_chunk: LinkIcon,
+    youtube_chunk: FilmIcon,
+    text_chunk: ChatBubbleLeftRightIcon,
 };
 
 const statusColors = {

@@ -41,6 +41,9 @@ RUN composer dump-autoload --optimize
 # Set permissions
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
+# Copy custom PHP-FPM pool configuration to reduce CPU usage
+COPY php-fpm-pool.conf /usr/local/etc/php-fpm.d/zz-custom.conf
+
 # Copy supervisor configuration
 COPY supervisor/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
