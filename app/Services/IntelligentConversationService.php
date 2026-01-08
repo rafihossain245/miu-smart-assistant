@@ -53,8 +53,12 @@ class IntelligentConversationService
         // Build system prompt based on intent and context
         $systemPrompt = $this->buildSystemPrompt($intent, $conversationState, $chatbotId);
 
-        // Assemble relevant context
-        $context = $this->contextManager->assembleContext($sources, $products, $this->formatConversationHistory($conversationHistory));
+        // For pure greetings, don't include knowledge base context to avoid confusion
+        $context = [];
+        if ($intent['primary_intent'] !== 'greeting') {
+            // Assemble relevant context only for non-greeting queries
+            $context = $this->contextManager->assembleContext($sources, $products, $this->formatConversationHistory($conversationHistory));
+        }
 
         // Generate response using OpenAI with usage tracking
         $response = $this->openAIService->generateChatResponseWithUsage($systemPrompt, $userMessage, $context);
@@ -149,6 +153,15 @@ class IntelligentConversationService
 
         // Intent-specific guidelines
         switch ($intent['primary_intent']) {
+            case 'greeting':
+                $guidelines .= "- This is a GREETING from the user\n";
+                $guidelines .= "- Respond with a warm, friendly greeting\n";
+                $guidelines .= "- Keep it simple and welcoming - just say hello and offer help\n";
+                $guidelines .= "- Example: 'Hello! How can I help you today?'\n";
+                $guidelines .= "- Do NOT provide any product information, features, or knowledge base content\n";
+                $guidelines .= "- Do NOT start explaining anything - wait for the user's actual question\n";
+                break;
+
             case 'contact_request':
                 $guidelines .= "- This is a CONTACT REQUEST - user wants to communicate with the business\n";
                 $guidelines .= "- PRIORITY: Provide business contact information (WhatsApp, phone, email)\n";

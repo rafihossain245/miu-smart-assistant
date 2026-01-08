@@ -66,10 +66,11 @@ class RAGService
             // Check if this is a simple greeting or help request that doesn't need RAG
             if ($this->isSimpleInteraction($question)) {
                 // Use intelligent conversation service for greetings and simple requests
+                // Pass empty conversation history to avoid AI continuing previous topics
                 $responseData = $this->intelligentConversation->generateResponseWithUsage(
                     $question,
                     $chatbotId,
-                    $recentMessages,
+                    [], // Empty history for clean greeting response
                     [], // No sources needed for simple interactions
                     []  // No products needed for simple interactions
                 );
@@ -157,20 +158,6 @@ class RAGService
                         'threshold' => 0.8
                     ]);
 
-                    // Generate intelligent response even without specific context
-                    $systemPrompt = $this->buildSystemPrompt($chatbotId);
-
-                    // Get some info about what the knowledge base contains
-                    $knowledgeBaseTopics = Source::where('chatbot_id', $chatbotId)
-                        ->where('status', 'completed')
-                        ->limit(5)
-                        ->pluck('title')
-                        ->toArray();
-
-                    $topicsInfo = !empty($knowledgeBaseTopics)
-                        ? "My knowledge base covers topics like: " . implode(", ", $knowledgeBaseTopics)
-                        : "My knowledge base contains various resources";
-
                     // Check if we have relevant products even when no knowledge base match
                     $relevantProducts = $this->findRelevantProducts($question, $chatbotId);
 
@@ -193,10 +180,10 @@ class RAGService
                     } else {
                         // Use a more polite fallback response
                         $politeResponses = [
-                            "I'm really sorry, I don't have an answer for the question you're asking. " . $topicsInfo . ". What else can I help you with?",
-                            "I apologize, but I couldn't find specific information about that in my knowledge base. " . $topicsInfo . ". Is there anything else I can assist you with?",
-                            "I'm sorry, I don't have information about that particular topic. " . $topicsInfo . ". How else can I help you today?",
-                            "I apologize, but I don't have an answer for that question. " . $topicsInfo . ". What other questions do you have?"
+                            "I'm really sorry, I don't have an answer for the question you're asking. What else can I help you with?",
+                            "I apologize, but I couldn't find specific information about that in my knowledge base. Is there anything else I can assist you with?",
+                            "I'm sorry, I don't have information about that particular topic. How else can I help you today?",
+                            "I apologize, but I don't have an answer for that question. What other questions do you have?"
                         ];
 
                         $response = $politeResponses[array_rand($politeResponses)];
@@ -844,23 +831,14 @@ The context from your knowledge base follows. Use it as your primary source of t
     {
         $lowerQuestion = strtolower(trim($question));
 
-        // Greeting patterns
+        // Only pure greetings without any other content should bypass RAG
         $greetingPatterns = [
-            'hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening',
-            'greetings', 'yo', 'hiya', 'howdy', 'sup', 'what\'s up', 'how are you'
+            '/^(hello|hi|hey|good morning|good afternoon|good evening|greetings|yo|hiya|howdy|sup|what\'s up|how are you)[!.?\s]*$/i',
+            '/^(hello|hi|hey)\s+(there|everyone|guys)[!.?\s]*$/i'
         ];
 
-        // Simple help requests
-        $helpPatterns = [
-            'help me', 'help', 'can you help', 'i need help', 'assist me',
-            'how can you help', 'what can you do', 'what can you help with'
-        ];
-
-        // Check all patterns
-        $allPatterns = array_merge($greetingPatterns, $helpPatterns);
-
-        foreach ($allPatterns as $pattern) {
-            if (str_contains($lowerQuestion, $pattern)) {
+        foreach ($greetingPatterns as $pattern) {
+            if (preg_match($pattern, $lowerQuestion)) {
                 return true;
             }
         }

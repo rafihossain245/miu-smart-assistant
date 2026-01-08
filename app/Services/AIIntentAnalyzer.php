@@ -301,10 +301,15 @@ Respond format: intent|confidence";
      */
     private function matchesGreeting(string $message): bool
     {
-        $patterns = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening'];
+        // Only match if greeting is the entire message or starts with greeting
+        $patterns = [
+            '/^(hello|hi|hey|good morning|good afternoon|good evening|greetings|yo|hiya|howdy)[!.?\s]*$/i',
+            '/^(hello|hi|hey)\s+(there|everyone|guys)[!.?\s]*$/i',
+            '/^(hi|hello|hey)$/i' // Exact match for simple greetings
+        ];
 
         foreach ($patterns as $pattern) {
-            if (str_contains($message, $pattern)) {
+            if (preg_match($pattern, $message)) {
                 return true;
             }
         }
