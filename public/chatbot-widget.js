@@ -111,14 +111,13 @@
             }
 
             .ai-chatbot-iframe {
-                position: absolute;
                 width: 350px;
                 height: 500px;
                 border: none;
                 border-radius: 12px;
                 box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
                 position: absolute;
-                bottom: 40px;
+                bottom: 110px;
                 ${config.position === 'bottom-left' ? 'left: 0;' : 'right: 0;'}
                 display: none;
                 background: white;
