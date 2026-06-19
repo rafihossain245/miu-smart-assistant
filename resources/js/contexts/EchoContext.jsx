@@ -68,6 +68,7 @@ export const EchoProvider = ({ children }) => {
                         wsPort: import.meta.env.VITE_REVERB_PORT,
                         wssPort: import.meta.env.VITE_REVERB_PORT,
                         forceTLS: import.meta.env.VITE_REVERB_SCHEME === 'wss',
+                        cluster: config.cluster || 'mt1',
                         enabledTransports: ['ws', 'wss'],
                     };
                 } else if (config.driver === 'pusher') {

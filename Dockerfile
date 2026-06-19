@@ -54,8 +54,8 @@ RUN mkdir -p /var/log/supervisor
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Expose PHP-FPM port and Reverb port
-EXPOSE 9000 8080
+# Expose Laravel HTTP, Reverb, and PHP-FPM ports
+EXPOSE 8000 8080 9000
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

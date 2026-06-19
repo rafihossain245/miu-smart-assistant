@@ -20,9 +20,12 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // Create regular test user
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
-        ]);
+        User::updateOrCreate(
+            ['email' => 'test@example.com'],
+            User::factory()->make([
+                'name' => 'Test User',
+                'email' => 'test@example.com',
+            ])->toArray()
+        );
     }
 }

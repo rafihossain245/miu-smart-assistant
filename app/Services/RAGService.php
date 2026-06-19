@@ -107,6 +107,29 @@ class RAGService
                 ? "Recent conversation history:\n" . implode("\n", $recentMessages) . "\n\n"
                 : '';
 
+            $rosterResponse = $this->answerRosterMembershipQuestion($question, $chatbotId);
+            if ($rosterResponse !== null) {
+                $sources = [];
+
+                $conversation->messages()->create([
+                    'content' => $question,
+                    'is_bot' => false,
+                    'sources' => [],
+                ]);
+
+                $conversation->messages()->create([
+                    'content' => $rosterResponse,
+                    'is_bot' => true,
+                    'sources' => $sources,
+                ]);
+
+                return [
+                    'reply' => $rosterResponse,
+                    'sources' => $sources,
+                    'show_contact_info' => false,
+                ];
+            }
+
             // Enhanced conversation analysis for better context awareness
             $isFollowUpQuestion = $this->detectFollowUpQuestion($question, $recentMessages);
             $hasReferences = $this->detectReferences($question);
