@@ -55,6 +55,14 @@ export const EchoProvider = ({ children }) => {
                 // Configure based on driver
                 if (config.driver === 'reverb') {
                     window.Pusher = Pusher;
+                    const envHost = import.meta.env.VITE_REVERB_HOST;
+                    const envPort = import.meta.env.VITE_REVERB_PORT;
+                    const envScheme = import.meta.env.VITE_REVERB_SCHEME;
+                    const reverbScheme = window.location.protocol === 'https:' ? 'wss' : (envScheme || 'ws');
+                    const reverbHost = !envHost || envHost === 'localhost'
+                        ? window.location.hostname
+                        : envHost;
+
                     echoConfig = {
                         ...echoConfig,
                         broadcaster: 'reverb',
@@ -64,11 +72,13 @@ export const EchoProvider = ({ children }) => {
                         // wssPort: config.port || 8080,
                         // forceTLS: config.scheme === 'https',
                         key: import.meta.env.VITE_REVERB_APP_KEY,
-                        wsHost: import.meta.env.VITE_REVERB_HOST,
-                        wsPort: import.meta.env.VITE_REVERB_PORT,
-                        wssPort: import.meta.env.VITE_REVERB_PORT,
-                        forceTLS: import.meta.env.VITE_REVERB_SCHEME === 'wss',
+                        wsHost: reverbHost,
+                        wsPort: envPort || window.location.port || 8080,
+                        wssPort: envPort || window.location.port || 8080,
+                        forceTLS: reverbScheme === 'wss',
+                        encrypted: reverbScheme === 'wss',
                         enabledTransports: ['ws', 'wss'],
+                        cluster: config.cluster || 'mt1',
                     };
                 } else if (config.driver === 'pusher') {
                     window.Pusher = Pusher;

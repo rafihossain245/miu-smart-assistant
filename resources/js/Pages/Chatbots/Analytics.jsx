@@ -188,7 +188,7 @@ export default function ChatbotAnalytics({ chatbot, conversations, analytics, pr
                                     Product Performance
                                 </h2>
                                 <p className="mt-2 text-sm text-gray-700">
-                                    Most mentioned products and services in conversations.
+                                    Most mentioned programs and services in conversations.
                                 </p>
                             </div>
                         </div>

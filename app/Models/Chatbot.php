@@ -29,6 +29,7 @@ class Chatbot extends Model
         'smart_handoff_enabled',
         'handoff_triggers',
         'contact_settings',
+        'metadata',
     ];
 
     protected $casts = [
@@ -41,6 +42,7 @@ class Chatbot extends Model
         'qualification_fields' => 'array',
         'handoff_triggers' => 'array',
         'contact_settings' => 'array',
+        'metadata' => 'array',
         'conversation_memory_enabled' => 'boolean',
         'lead_qualification_enabled' => 'boolean',
         'smart_handoff_enabled' => 'boolean',

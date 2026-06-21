@@ -9,6 +9,7 @@ use App\Models\Chatbot;
 use App\Models\Source;
 use App\Models\Product;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
@@ -508,10 +509,11 @@ class ChatbotController extends Controller
             }
 
             $chatbot->update(['customer_query_examples' => $uniqueExamples]);
+            $this->syncResponseTrainingData($chatbot, $uniqueExamples);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Query examples successfully fed to AI for training improvement! AI insights have been generated and integrated.'
+                'message' => 'Response training saved and indexed for assistant answers.'
             ]);
 
         } catch (\Exception $e) {
@@ -524,7 +526,7 @@ class ChatbotController extends Controller
 
     private function updateChatbotAISummary(Chatbot $chatbot, array $queryExamples, string $aiInsights = '')
     {
-        $summary = "Training Data Summary:\n";
+        $summary = "Response Training Summary:\n";
         foreach ($queryExamples as $index => $example) {
             $summary .= "Q" . ($index + 1) . ": " . $example['question'] . "\n";
             $summary .= "A" . ($index + 1) . ": " . substr($example['answer'], 0, 100) . "...\n\n";
@@ -541,6 +543,40 @@ class ChatbotController extends Controller
         $metadata['training_examples_count'] = count($queryExamples);
 
         $chatbot->update(['metadata' => $metadata]);
+    }
+
+    private function syncResponseTrainingData(Chatbot $chatbot, array $queryExamples): void
+    {
+        $normalizedQuestions = [];
+
+        foreach ($queryExamples as $example) {
+            $question = trim($example['question'] ?? '');
+            $answer = trim($example['answer'] ?? '');
+
+            if ($question === '' || $answer === '') {
+                continue;
+            }
+
+            $normalizedQuestions[] = $question;
+
+            DB::table('chatbot_training_data')->updateOrInsert(
+                [
+                    'chatbot_id' => $chatbot->id,
+                    'question' => $question,
+                ],
+                [
+                    'answer' => $answer,
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+        }
+
+        DB::table('chatbot_training_data')
+            ->where('chatbot_id', $chatbot->id)
+            ->when(!empty($normalizedQuestions), fn($query) => $query->whereNotIn('question', $normalizedQuestions))
+            ->when(empty($normalizedQuestions), fn($query) => $query)
+            ->delete();
     }
 
     public function training(Chatbot $chatbot)
@@ -570,8 +606,9 @@ class ChatbotController extends Controller
         $chatbot->update([
             'customer_query_examples' => $validated['customer_query_examples']
         ]);
+        $this->syncResponseTrainingData($chatbot, $validated['customer_query_examples']);
 
-        return back()->with('message', 'Training data saved successfully!');
+        return back()->with('message', 'Response training saved successfully!');
     }
 
     public function importConversations(Request $request, Chatbot $chatbot)

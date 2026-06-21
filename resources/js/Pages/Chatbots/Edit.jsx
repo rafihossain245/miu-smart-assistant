@@ -1,14 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { useForm, Link, router } from '@inertiajs/react';
+import React, { useState } from 'react';
+import { useForm, Link } from '@inertiajs/react';
 import AppLayout from '../../Layouts/AppLayout';
-import { TrashIcon, SwatchIcon, ChatBubbleLeftRightIcon, UserGroupIcon, MicrophoneIcon, LinkIcon, ArrowLeftIcon, PhoneIcon } from '@heroicons/react/24/outline';
+import { SwatchIcon, ChatBubbleLeftRightIcon, ArrowLeftIcon, PhoneIcon } from '@heroicons/react/24/outline';
 import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
 export default function EditChatbot({ chatbot, flash }) {
-    const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [activeTab, setActiveTab] = useState('general');
-    const [customPersonas, setCustomPersonas] = useState([]);
 
     const { data, setData, put, processing, errors, reset } = useForm({
         name: chatbot.name || '',
@@ -54,41 +52,15 @@ export default function EditChatbot({ chatbot, flash }) {
         }
     });
 
-    // Initialize custom personas from existing metadata
-    useEffect(() => {
-        if (chatbot.metadata?.custom_personas) {
-            const loadedPersonas = Object.entries(chatbot.metadata.custom_personas).map(([key, persona]) => ({
-                id: key.replace('custom_', ''),
-                name: persona.name,
-                description: persona.description
-            }));
-            setCustomPersonas(loadedPersonas);
-        }
-    }, [chatbot.metadata]);
-
     const submit = (e) => {
         e.preventDefault();
 
-        // Include custom personas in the submitted data
-        const customPersonasData = customPersonas.reduce((acc, persona) => {
-            if (persona.name && persona.description) {
-                acc[`custom_${persona.id}`] = {
-                    name: persona.name,
-                    description: persona.description
-                };
-            }
-            return acc;
-        }, {});
-
         put(`/chatbots/${chatbot.id}`, {
-            data: {
-                ...data,
-                custom_personas: customPersonasData
-            },
+            data,
             preserveScroll: true,
             preserveState: true,
             onSuccess: () => {
-                toast.success('Chatbot settings saved successfully!');
+                toast.success('Assistant settings saved successfully!');
             },
             onError: (errors) => {
                 toast.error('Failed to save settings. Please check for errors and try again.');
@@ -97,20 +69,9 @@ export default function EditChatbot({ chatbot, flash }) {
         });
     };
 
-    const deleteChatbot = () => {
-        router.delete(`/chatbots/${chatbot.id}`, {
-            onSuccess: () => {
-                router.visit('/chatbots');
-            }
-        });
-    };
-
     const tabs = [
-        { id: 'general', name: 'General Settings', icon: ChatBubbleLeftRightIcon },
-        { id: 'personas', name: 'Customer Personas', icon: UserGroupIcon },
-        { id: 'voice', name: 'Brand Voice', icon: MicrophoneIcon },
-        { id: 'integrations', name: 'Integrations', icon: LinkIcon },
-        { id: 'contact', name: 'Contact Settings', icon: PhoneIcon },
+        { id: 'general', name: 'General', icon: ChatBubbleLeftRightIcon },
+        { id: 'contact', name: 'Contact', icon: PhoneIcon },
         { id: 'appearance', name: 'Appearance', icon: SwatchIcon },
     ];
 
@@ -127,37 +88,6 @@ export default function EditChatbot({ chatbot, flash }) {
         { value: 'bottom-left', label: 'Bottom Left' },
         { value: 'top-right', label: 'Top Right' },
         { value: 'top-left', label: 'Top Left' },
-    ];
-
-    const customerPersonaOptions = [
-        { value: 'tech_savvy_professionals', label: 'Tech-Savvy Professionals', description: 'Experienced users who prefer detailed, technical information' },
-        { value: 'business_decision_makers', label: 'Business Decision Makers', description: 'Executives and managers focused on ROI and business outcomes' },
-        { value: 'small_business_owners', label: 'Small Business Owners', description: 'Entrepreneurs looking for cost-effective, easy-to-implement solutions' },
-        { value: 'first_time_users', label: 'First-Time Users', description: 'New users who need guidance and simple explanations' },
-        { value: 'support_seekers', label: 'Support Seekers', description: 'Users looking for help with specific problems or issues' },
-        { value: 'price_conscious_buyers', label: 'Price-Conscious Buyers', description: 'Customers focused on getting the best value for their money' },
-        { value: 'enterprise_customers', label: 'Enterprise Customers', description: 'Large organizations with complex requirements and compliance needs' },
-        { value: 'developers', label: 'Developers', description: 'Technical implementers who need APIs, documentation, and integration details' },
-    ];
-
-    const brandVoiceOptions = [
-        { value: 'professional_friendly', label: 'Professional & Friendly', description: 'Helpful, knowledgeable, and approachable' },
-        { value: 'casual_conversational', label: 'Casual & Conversational', description: 'Relaxed, informal, and easy-going' },
-        { value: 'expert_authoritative', label: 'Expert & Authoritative', description: 'Confident, detailed, and highly knowledgeable' },
-        { value: 'supportive_empathetic', label: 'Supportive & Empathetic', description: 'Understanding, caring, and patient' },
-        { value: 'concise_direct', label: 'Concise & Direct', description: 'Straight to the point, efficient communication' },
-        { value: 'enthusiastic_energetic', label: 'Enthusiastic & Energetic', description: 'Positive, motivating, and engaging' },
-    ];
-
-    const integrationOptions = [
-        { value: 'thrivedesk', label: 'ThriveDesk', description: 'Customer support ticketing system' },
-        { value: 'wordpress', label: 'WordPress', description: 'Content management system integration' },
-        { value: 'slack', label: 'Slack', description: 'Team communication platform' },
-        { value: 'zapier', label: 'Zapier', description: 'Automation and workflow integration' },
-        { value: 'hubspot', label: 'HubSpot', description: 'CRM and marketing platform' },
-        { value: 'salesforce', label: 'Salesforce', description: 'Customer relationship management' },
-        { value: 'stripe', label: 'Stripe', description: 'Payment processing integration' },
-        { value: 'mailchimp', label: 'Mailchimp', description: 'Email marketing platform' },
     ];
 
     // Function to render bot icon consistently
@@ -208,7 +138,7 @@ export default function EditChatbot({ chatbot, flash }) {
     };
 
     return (
-        <AppLayout title={`Edit - ${chatbot.name}`}>
+        <AppLayout title={`Assistant Settings - ${chatbot.name}`}>
             <div className="px-4 py-6 sm:px-0">
                 {/* Back Button */}
                 <div className="mb-4">
@@ -224,20 +154,13 @@ export default function EditChatbot({ chatbot, flash }) {
                 <div className="md:flex md:items-center md:justify-between">
                     <div className="min-w-0 flex-1">
                         <h2 className="text-2xl font-bold leading-7 text-gray-900 sm:truncate sm:text-3xl sm:tracking-tight">
-                            Edit {chatbot.name}
+                            Assistant Settings
                         </h2>
                         <p className="mt-1 text-sm text-gray-500">
-                            Customize your chatbot settings and appearance. See live preview on the right.
+                            Manage the core MIU Smart Assistant settings and contact details.
                         </p>
                     </div>
                     <div className="mt-4 flex md:ml-4 md:mt-0 space-x-3">
-                        <button
-                            onClick={() => setShowDeleteModal(true)}
-                            className="inline-flex items-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500"
-                        >
-                            <TrashIcon className="-ml-0.5 mr-1.5 h-5 w-5" />
-                            Delete
-                        </button>
                         <Link
                             href={`/chatbots/${chatbot.id}`}
                             className="inline-flex items-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
@@ -299,7 +222,7 @@ export default function EditChatbot({ chatbot, flash }) {
                             <div className="px-4 py-5 sm:p-6 space-y-6">
                                 <div>
                                     <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-                                        Chatbot Name
+                                        Assistant Name
                                     </label>
                                     <input
                                         type="text"
@@ -307,7 +230,7 @@ export default function EditChatbot({ chatbot, flash }) {
                                         value={data.name}
                                         onChange={(e) => setData('name', e.target.value)}
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
-                                        placeholder="Enter chatbot name"
+                                        placeholder="Enter assistant name"
                                     />
                                     {errors.name && <p className="mt-2 text-sm text-red-600">{errors.name}</p>}
                                 </div>
@@ -322,7 +245,7 @@ export default function EditChatbot({ chatbot, flash }) {
                                         value={data.description}
                                         onChange={(e) => setData('description', e.target.value)}
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
-                                        placeholder="Describe what your chatbot does"
+                                        placeholder="Describe what the MIU assistant helps with"
                                     />
                                     {errors.description && <p className="mt-2 text-sm text-red-600">{errors.description}</p>}
                                 </div>
@@ -354,7 +277,7 @@ export default function EditChatbot({ chatbot, flash }) {
                                         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm p-2"
                                         placeholder="Enter the initial message shown when users start chatting"
                                     />
-                                    <p className="mt-1 text-sm text-gray-500">This message will be shown as the first message when users start chatting with your bot.</p>
+                                    <p className="mt-1 text-sm text-gray-500">This message will be shown as the first message when users start chatting with the assistant.</p>
                                     {errors.initial_message && <p className="mt-2 text-sm text-red-600">{errors.initial_message}</p>}
                                 </div>
 
@@ -368,7 +291,7 @@ export default function EditChatbot({ chatbot, flash }) {
                                             className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
                                         />
                                         <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
-                                            Active (users can interact with this chatbot)
+                                            Active (users can interact with this assistant)
                                         </label>
                                     </div>
                                     {errors.is_active && <p className="mt-2 text-sm text-red-600">{errors.is_active}</p>}
@@ -376,226 +299,6 @@ export default function EditChatbot({ chatbot, flash }) {
                             </div>
                         </div>
                     )}
-
-                    {activeTab === 'personas' && (
-                        <div className="bg-white shadow sm:rounded-lg">
-                            <div className="px-4 py-5 sm:p-6 space-y-6">
-                                <div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">Customer Personas</h3>
-                                    <p className="text-sm text-gray-500 mb-4">
-                                        Select the types of customers your chatbot will interact with. This helps tailor responses to different audience needs.
-                                    </p>
-
-                                    {/* Default Personas */}
-                                    <div className="space-y-3 mb-6">
-                                        <h4 className="text-sm font-medium text-gray-900">Default Personas</h4>
-                                        {customerPersonaOptions.map((persona) => (
-                                            <label key={persona.value} className="relative flex items-start">
-                                                <div className="flex items-center h-5">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={data.customer_personas.includes(persona.value)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setData('customer_personas', [...data.customer_personas, persona.value]);
-                                                            } else {
-                                                                setData('customer_personas', data.customer_personas.filter(p => p !== persona.value));
-                                                            }
-                                                        }}
-                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                    />
-                                                </div>
-                                                <div className="ml-3 text-sm">
-                                                    <span className="font-medium text-gray-700">{persona.label}</span>
-                                                    <p className="text-gray-500">{persona.description}</p>
-                                                </div>
-                                            </label>
-                                        ))}
-                                    </div>
-
-                                    {/* Custom Personas */}
-                                    <div className="border-t pt-6">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h4 className="text-sm font-medium text-gray-900">Custom Personas</h4>
-                                            <button
-                                                type="button"
-                                                onClick={() => {
-                                                    setCustomPersonas([...customPersonas, { name: '', description: '', id: Date.now() }]);
-                                                }}
-                                                className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                                            >
-                                                Add Custom Persona
-                                            </button>
-                                        </div>
-
-                                        {customPersonas.length > 0 && (
-                                            <div className="space-y-4">
-                                                {customPersonas.map((persona, index) => (
-                                                    <div key={persona.id} className="border border-gray-200 rounded-lg p-4">
-                                                        <div className="space-y-3">
-                                                            <div className="flex items-center justify-between">
-                                                                <label className="block text-sm font-medium text-gray-700">
-                                                                    Persona Name
-                                                                </label>
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const updatedPersonas = customPersonas.filter(p => p.id !== persona.id);
-                                                                        setCustomPersonas(updatedPersonas);
-
-                                                                        // Also remove from selected personas if it was checked
-                                                                        const personaValue = `custom_${persona.id}`;
-                                                                        if (data.customer_personas.includes(personaValue)) {
-                                                                            setData('customer_personas', data.customer_personas.filter(p => p !== personaValue));
-                                                                        }
-                                                                    }}
-                                                                    className="text-red-600 hover:text-red-800 text-sm"
-                                                                >
-                                                                    Remove
-                                                                </button>
-                                                            </div>
-                                                            <input
-                                                                type="text"
-                                                                value={persona.name}
-                                                                onChange={(e) => {
-                                                                    const updatedPersonas = customPersonas.map(p =>
-                                                                        p.id === persona.id ? { ...p, name: e.target.value } : p
-                                                                    );
-                                                                    setCustomPersonas(updatedPersonas);
-                                                                }}
-                                                                placeholder="e.g., Technical Consultants"
-                                                                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                                                            />
-
-                                                            <div>
-                                                                <label className="block text-sm font-medium text-gray-700">
-                                                                    Description
-                                                                </label>
-                                                                <textarea
-                                                                    rows={2}
-                                                                    value={persona.description}
-                                                                    onChange={(e) => {
-                                                                        const updatedPersonas = customPersonas.map(p =>
-                                                                            p.id === persona.id ? { ...p, description: e.target.value } : p
-                                                                        );
-                                                                        setCustomPersonas(updatedPersonas);
-                                                                    }}
-                                                                    placeholder="Describe the characteristics and needs of this persona..."
-                                                                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                                                                />
-                                                            </div>
-
-                                                            {persona.name && (
-                                                                <label className="relative flex items-start">
-                                                                    <div className="flex items-center h-5">
-                                                                        <input
-                                                                            type="checkbox"
-                                                                            checked={data.customer_personas.includes(`custom_${persona.id}`)}
-                                                                            onChange={(e) => {
-                                                                                const personaValue = `custom_${persona.id}`;
-                                                                                if (e.target.checked) {
-                                                                                    setData('customer_personas', [...data.customer_personas, personaValue]);
-                                                                                } else {
-                                                                                    setData('customer_personas', data.customer_personas.filter(p => p !== personaValue));
-                                                                                }
-                                                                            }}
-                                                                            className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                                        />
-                                                                    </div>
-                                                                    <div className="ml-3 text-sm">
-                                                                        <span className="font-medium text-gray-700">Enable this custom persona</span>
-                                                                    </div>
-                                                                </label>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-
-                                        {customPersonas.length === 0 && (
-                                            <p className="text-sm text-gray-500 italic">
-                                                No custom personas added yet. Click "Add Custom Persona" to create your own persona types.
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'voice' && (
-                        <div className="bg-white shadow sm:rounded-lg">
-                            <div className="px-4 py-5 sm:p-6 space-y-6">
-                                <div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">Brand Voice</h3>
-                                    <p className="text-sm text-gray-500 mb-4">
-                                        Choose the tone and style for your chatbot's responses to match your brand personality.
-                                    </p>
-
-                                    <div className="space-y-3">
-                                        {brandVoiceOptions.map((voice) => (
-                                            <label key={voice.value} className="relative flex items-start">
-                                                <div className="flex items-center h-5">
-                                                    <input
-                                                        type="radio"
-                                                        name="brand_voice"
-                                                        value={voice.value}
-                                                        checked={data.brand_voice === voice.value}
-                                                        onChange={(e) => setData('brand_voice', e.target.value)}
-                                                        className="h-4 w-4 border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                    />
-                                                </div>
-                                                <div className="ml-3 text-sm">
-                                                    <span className="font-medium text-gray-700">{voice.label}</span>
-                                                    <p className="text-gray-500">{voice.description}</p>
-                                                </div>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {activeTab === 'integrations' && (
-                        <div className="bg-white shadow sm:rounded-lg">
-                            <div className="px-4 py-5 sm:p-6 space-y-6">
-                                <div>
-                                    <h3 className="text-lg font-medium text-gray-900 mb-2">Third-Party Integrations</h3>
-                                    <p className="text-sm text-gray-500 mb-4">
-                                        Connect your chatbot with external services to enhance functionality.
-                                    </p>
-
-                                    <div className="space-y-3">
-                                        {integrationOptions.map((integration) => (
-                                            <label key={integration.value} className="relative flex items-start">
-                                                <div className="flex items-center h-5">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={data.integrations.some(i => i.type === integration.value)}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setData('integrations', [...data.integrations, { type: integration.value, enabled: true, config: {} }]);
-                                                            } else {
-                                                                setData('integrations', data.integrations.filter(i => i.type !== integration.value));
-                                                            }
-                                                        }}
-                                                        className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                                    />
-                                                </div>
-                                                <div className="ml-3 text-sm">
-                                                    <span className="font-medium text-gray-700">{integration.label}</span>
-                                                    <p className="text-gray-500">{integration.description}</p>
-                                                </div>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
 
                     {activeTab === 'appearance' && (
                         <div className="space-y-8">
@@ -985,7 +688,7 @@ export default function EditChatbot({ chatbot, flash }) {
                                 <div>
                                     <h3 className="text-lg font-medium text-gray-900 mb-2">Contact Settings</h3>
                                     <p className="text-sm text-gray-500 mb-4">
-                                        Configure business contact information that will be shared when users request to communicate with your team.
+                                        Configure MIU contact information that will be shared when users ask to communicate with your team.
                                     </p>
 
                                     {/* Enable Contact Settings */}
@@ -1005,7 +708,7 @@ export default function EditChatbot({ chatbot, flash }) {
                                             </span>
                                         </label>
                                         <p className="mt-1 text-xs text-gray-500">
-                                            When enabled, your chatbot will provide this contact information when users ask to communicate with your business.
+                                            When enabled, the assistant will provide this contact information when users ask to communicate with MIU.
                                         </p>
                                     </div>
 
@@ -1347,41 +1050,6 @@ export default function EditChatbot({ chatbot, flash }) {
                     </div>
                 </div>
 
-                {/* Delete Modal */}
-                {showDeleteModal && (
-                    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
-                        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                            <div className="flex items-center">
-                                <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100">
-                                    <TrashIcon className="h-6 w-6 text-red-600" />
-                                </div>
-                            </div>
-                            <div className="mt-3 text-center">
-                                <h3 className="text-lg font-semibold text-gray-900">Delete Chatbot</h3>
-                                <div className="mt-2">
-                                    <p className="text-sm text-gray-500">
-                                        Are you sure you want to delete "{chatbot.name}"? This action cannot be undone.
-                                        All conversations, sources, and analytics data will be permanently lost.
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
-                                <button
-                                    onClick={deleteChatbot}
-                                    className="inline-flex w-full justify-center rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 sm:col-start-2"
-                                >
-                                    Delete
-                                </button>
-                                <button
-                                    onClick={() => setShowDeleteModal(false)}
-                                    className="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0"
-                                >
-                                    Cancel
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
             {/* Toast Container */}
             <ToastContainer
