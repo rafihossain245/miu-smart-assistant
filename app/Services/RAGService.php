@@ -14,6 +14,7 @@ use App\Services\HumanizedResponseService;
 use App\Services\EmbeddingCacheService;
 use App\Services\IntelligentConversationService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class RAGService
 {
@@ -106,6 +107,8 @@ class RAGService
             $conversationContext = !empty($recentMessages)
                 ? "Recent conversation history:\n" . implode("\n", $recentMessages) . "\n\n"
                 : '';
+            $trainingMatches = $this->findRelevantTrainingExamples($question, $chatbot);
+            $trainingContext = $this->formatTrainingExamplesContext($trainingMatches);
 
             $rosterResponse = $this->answerRosterMembershipQuestion($question, $chatbotId);
             if ($rosterResponse !== null) {
@@ -143,9 +146,20 @@ class RAGService
                 ->count();
 
             if ($completedSourcesCount === 0) {
-                Log::info("No completed sources found for chatbot {$chatbotId}");
-                $response = "I'm still learning from your knowledge base. Please sync your sources first or wait for processing to complete.";
-                $sources = [];
+                if (!empty($trainingMatches)) {
+                    Log::info("Using response training without completed sources", [
+                        'chatbot_id' => $chatbotId,
+                        'training_matches' => count($trainingMatches),
+                    ]);
+
+                    $response = $this->generateResponseFromTraining($question, $chatbotId, $conversationContext, $trainingMatches);
+                    $sources = [];
+                    $contextUsed = [$trainingContext];
+                } else {
+                    Log::info("No completed sources found for chatbot {$chatbotId}");
+                    $response = "I'm still learning from your knowledge base. Please add knowledge base sources or response training first.";
+                    $sources = [];
+                }
             } else {
                 // Generate embedding for the user question (using cache)
                 // For follow-up questions, enhance query with conversation context
@@ -184,7 +198,21 @@ class RAGService
                     // Check if we have relevant products even when no knowledge base match
                     $relevantProducts = $this->findRelevantProducts($question, $chatbotId);
 
-                    if (!empty($relevantProducts)) {
+                    if (!empty($trainingMatches)) {
+                        $systemPrompt = $this->buildSystemPrompt($chatbotId);
+                        $contextArray = array_filter([
+                            $conversationContext,
+                            $trainingContext,
+                        ]);
+
+                        $response = $this->openAIService->generateChatResponse($systemPrompt, $question, $contextArray);
+                        $contextUsed = $contextArray;
+
+                        Log::info("Generated response from response training without source match", [
+                            'training_matches' => count($trainingMatches),
+                            'top_training_score' => $trainingMatches[0]['score'] ?? null,
+                        ]);
+                    } elseif (!empty($relevantProducts)) {
                         // Generate AI response with product recommendations
                         $systemPrompt = $this->buildSystemPrompt($chatbotId);
                         $productsContext = $this->formatProductsContext($relevantProducts);
@@ -259,6 +287,14 @@ class RAGService
                             'product_count' => count($relevantProducts),
                             'product_names' => array_column($relevantProducts, 'name')
                         ]);
+                    }
+
+                    if (!empty($trainingContext)) {
+                        if (is_array($context)) {
+                            array_unshift($context, $trainingContext);
+                        } else {
+                            $context = $trainingContext . "\n\n" . $context;
+                        }
                     }
 
                     // Use intelligent conversation service for complex questions with RAG context
@@ -363,6 +399,7 @@ FORMATTING RULES:
 
 RESPONSE GUIDELINES:
 • **When context matches**: Extract and present relevant information clearly and completely
+• **When response training examples match**: Treat them as approved answers and follow them closely
 • **When context is limited**: Provide helpful general knowledge if appropriate, then suggest they refer to specialized resources
 • **Be conversational**: Write naturally, not robotically
 • **Stay focused**: Answer the specific question asked
@@ -386,6 +423,132 @@ PRODUCT RECOMMENDATIONS:
 {$companyContext}
 
 The context from your knowledge base follows. Use it as your primary source of truth, especially for product recommendations and technical solutions.";
+    }
+
+    protected function findRelevantTrainingExamples(string $question, Chatbot $chatbot, int $limit = 3): array
+    {
+        $examples = [];
+
+        foreach (($chatbot->customer_query_examples ?? []) as $index => $example) {
+            if (!empty($example['question']) && !empty($example['answer'])) {
+                $examples[] = [
+                    'id' => null,
+                    'question' => $example['question'],
+                    'answer' => $example['answer'],
+                    'source' => 'chatbot',
+                    'index' => $index,
+                ];
+            }
+        }
+
+        $tableExamples = DB::table('chatbot_training_data')
+            ->where('chatbot_id', $chatbot->id)
+            ->get(['id', 'question', 'answer']);
+
+        foreach ($tableExamples as $example) {
+            $examples[] = [
+                'id' => $example->id,
+                'question' => $example->question,
+                'answer' => $example->answer,
+                'source' => 'table',
+            ];
+        }
+
+        $questionNormalized = $this->normalizeTrainingText($question);
+        $questionWords = $this->meaningfulWords($questionNormalized);
+        $matches = [];
+        $seenQuestions = [];
+
+        foreach ($examples as $example) {
+            $exampleQuestionNormalized = $this->normalizeTrainingText($example['question']);
+
+            if ($exampleQuestionNormalized === '' || isset($seenQuestions[$exampleQuestionNormalized])) {
+                continue;
+            }
+
+            $seenQuestions[$exampleQuestionNormalized] = true;
+            similar_text($questionNormalized, $exampleQuestionNormalized, $similarityPercent);
+
+            $exampleWords = $this->meaningfulWords($exampleQuestionNormalized);
+            $overlap = count(array_intersect($questionWords, $exampleWords));
+            $overlapScore = count($questionWords) > 0 ? $overlap / count($questionWords) : 0;
+
+            $containsScore = (
+                str_contains($questionNormalized, $exampleQuestionNormalized) ||
+                str_contains($exampleQuestionNormalized, $questionNormalized)
+            ) ? 1 : 0;
+
+            $score = max($similarityPercent / 100, $overlapScore, $containsScore);
+
+            if ($score >= 0.55) {
+                $example['score'] = $score;
+                $matches[] = $example;
+            }
+        }
+
+        usort($matches, fn($a, $b) => $b['score'] <=> $a['score']);
+        $matches = array_slice($matches, 0, $limit);
+
+        foreach ($matches as $match) {
+            if (!empty($match['id'])) {
+                DB::table('chatbot_training_data')
+                    ->where('id', $match['id'])
+                    ->increment('usage_count');
+            }
+        }
+
+        return $matches;
+    }
+
+    protected function generateResponseFromTraining(string $question, int $chatbotId, string $conversationContext, array $trainingMatches): string
+    {
+        if (($trainingMatches[0]['score'] ?? 0) >= 0.92) {
+            return $trainingMatches[0]['answer'];
+        }
+
+        return $this->openAIService->generateChatResponse(
+            $this->buildSystemPrompt($chatbotId),
+            $question,
+            array_filter([
+                $conversationContext,
+                $this->formatTrainingExamplesContext($trainingMatches),
+            ])
+        );
+    }
+
+    protected function formatTrainingExamplesContext(array $trainingMatches): string
+    {
+        if (empty($trainingMatches)) {
+            return '';
+        }
+
+        $context = "APPROVED RESPONSE TRAINING EXAMPLES:\n";
+        $context .= "Use these Q&A examples as authoritative. If the user's question matches one, answer using the approved answer.\n\n";
+
+        foreach ($trainingMatches as $index => $match) {
+            $context .= "Example " . ($index + 1) . " (match score: " . round(($match['score'] ?? 0) * 100) . "%)\n";
+            $context .= "Question: {$match['question']}\n";
+            $context .= "Approved Answer: {$match['answer']}\n\n";
+        }
+
+        return $context;
+    }
+
+    protected function normalizeTrainingText(string $text): string
+    {
+        $text = strtolower(trim($text));
+        $text = preg_replace('/[^a-z0-9\s]/', ' ', $text);
+        return trim(preg_replace('/\s+/', ' ', $text));
+    }
+
+    protected function meaningfulWords(string $text): array
+    {
+        $stopWords = ['the', 'a', 'an', 'for', 'each', 'what', 'is', 'are', 'in', 'of', 'to', 'and', 'or', 'by', 'with'];
+
+        return array_values(array_filter(
+            explode(' ', $text),
+            fn($word) => strlen($word) > 2 && !in_array($word, $stopWords, true)
+        ));
     }
 
     /**

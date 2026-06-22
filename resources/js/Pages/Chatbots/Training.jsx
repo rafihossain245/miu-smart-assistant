@@ -166,12 +166,12 @@ export default function ChatbotTraining({ chatbot, queryExamples = [] }) {
     };
 
     return (
-        <ChatbotLayout chatbot={chatbot} title={`Training Data - ${chatbot.name}`}>
+        <ChatbotLayout chatbot={chatbot} title={`Response Training - ${chatbot.name}`}>
             <div className="px-4 py-6 sm:px-0">
                 <div className="sm:flex sm:items-center">
                     <div className="sm:flex-auto">
                         <h1 className="text-base font-semibold leading-6 text-gray-900">
-                            Training Data for {chatbot.name}
+                            Response Training for {chatbot.name}
                         </h1>
                         <p className="mt-2 text-sm text-gray-700">
                             Add examples of common questions your customers ask and the ideal responses. This helps train the AI for better accuracy.
@@ -179,7 +179,7 @@ export default function ChatbotTraining({ chatbot, queryExamples = [] }) {
                     </div>
                 </div>
 
-                {/* Training Data Form */}
+                {/* Response Training Form */}
                 <div className="mt-8 bg-white shadow sm:rounded-lg">
                     <div className="px-4 py-5 sm:p-6">
                         <div className="flex items-center justify-between mb-6">
@@ -223,7 +223,7 @@ export default function ChatbotTraining({ chatbot, queryExamples = [] }) {
                                     ) : (
                                         <>
                                             <SparklesIcon className="h-4 w-4 mr-2" />
-                                            Feed to AI for Training
+                                            Feed to AI for Response Training
                                         </>
                                     )}
                                 </button>
@@ -290,7 +290,7 @@ export default function ChatbotTraining({ chatbot, queryExamples = [] }) {
                                             Saving...
                                         </>
                                     ) : (
-                                        'Save Training Data'
+                                        'Save Response Training'
                                     )}
                                 </button>
                             </div>
@@ -404,7 +404,7 @@ Support: Yes, we offer a 30-day money-back guarantee...`}
                                 <ul className="list-disc list-inside space-y-1">
                                     <li>Add real questions your customers frequently ask</li>
                                     <li>Write clear, helpful responses that match your brand voice</li>
-                                    <li>Include specific product/service names in responses when relevant</li>
+                                    <li>Include specific program/service names in responses when relevant</li>
                                     <li>Use the "Feed to AI" button to improve response accuracy</li>
                                     <li>Add 5-10 examples for best results</li>
                                 </ul>

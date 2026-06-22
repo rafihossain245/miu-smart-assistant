@@ -33,7 +33,7 @@ class OpenAIService
         try {
             $response = $this->generateChatResponseWithUsage($systemPrompt, $userMessage, $context);
             return $response['content'];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('OpenAI Chat Error: ' . $e->getMessage());
             throw $e;
         }
@@ -85,16 +85,26 @@ class OpenAIService
                 'temperature' => 0.7,
             ]);
 
+            $content = $response->choices[0]->message->content ?? null;
+            if (!is_string($content) || trim($content) === '') {
+                Log::warning('OpenAI Chat returned empty content', [
+                    'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
+                    'finish_reason' => $response->choices[0]->finishReason ?? null,
+                ]);
+
+                $content = 'I found relevant information, but I could not generate a complete answer right now. Please try again.';
+            }
+
             return [
-                'content' => $response->choices[0]->message->content,
+                'content' => $content,
                 'usage' => [
-                    'prompt_tokens' => $response->usage->promptTokens,
-                    'completion_tokens' => $response->usage->completionTokens,
-                    'total_tokens' => $response->usage->totalTokens,
+                    'prompt_tokens' => $response->usage->promptTokens ?? 0,
+                    'completion_tokens' => $response->usage->completionTokens ?? 0,
+                    'total_tokens' => $response->usage->totalTokens ?? 0,
                 ],
                 'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('OpenAI Chat Error: ' . $e->getMessage());
             throw $e;
         }

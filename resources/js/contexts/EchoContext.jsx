@@ -55,6 +55,14 @@ export const EchoProvider = ({ children }) => {
                 // Configure based on driver
                 if (config.driver === 'reverb') {
                     window.Pusher = Pusher;
+                    const envHost = import.meta.env.VITE_REVERB_HOST;
+                    const envPort = import.meta.env.VITE_REVERB_PORT;
+                    const envScheme = import.meta.env.VITE_REVERB_SCHEME;
+                    const reverbScheme = window.location.protocol === 'https:' ? 'wss' : (envScheme || 'ws');
+                    const reverbHost = !envHost || envHost === 'localhost'
+                        ? window.location.hostname
+                        : envHost;
+
                     echoConfig = {
                         ...echoConfig,
                         broadcaster: 'reverb',
@@ -64,12 +72,21 @@ export const EchoProvider = ({ children }) => {
                         // wssPort: config.port || 8080,
                         // forceTLS: config.scheme === 'https',
                         key: import.meta.env.VITE_REVERB_APP_KEY,
+<<<<<<< HEAD
                         wsHost: import.meta.env.VITE_REVERB_HOST,
                         wsPort: import.meta.env.VITE_REVERB_PORT,
                         wssPort: import.meta.env.VITE_REVERB_PORT,
                         forceTLS: import.meta.env.VITE_REVERB_SCHEME === 'wss',
                         cluster: config.cluster || 'mt1',
+=======
+                        wsHost: reverbHost,
+                        wsPort: envPort || window.location.port || 8080,
+                        wssPort: envPort || window.location.port || 8080,
+                        forceTLS: reverbScheme === 'wss',
+                        encrypted: reverbScheme === 'wss',
+>>>>>>> 27283b0bd5c507880d73277934b4f5ae1a5b3c42
                         enabledTransports: ['ws', 'wss'],
+                        cluster: config.cluster || 'mt1',
                     };
                 } else if (config.driver === 'pusher') {
                     window.Pusher = Pusher;

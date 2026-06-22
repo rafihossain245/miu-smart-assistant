@@ -182,7 +182,7 @@ export default function ChatbotProducts({ chatbot, products }) {
     };
 
     const deleteProduct = (productId) => {
-        if (confirm('Are you sure you want to delete this product/service?')) {
+        if (confirm('Are you sure you want to delete this program/service?')) {
             router.delete(`/chatbots/${chatbot.id}/products/${productId}`);
         }
     };
@@ -199,15 +199,15 @@ export default function ChatbotProducts({ chatbot, products }) {
     };
 
     return (
-        <ChatbotLayout chatbot={chatbot} title={`Products & Services - ${chatbot.name}`}>
+        <ChatbotLayout chatbot={chatbot} title={`Programs & Services - ${chatbot.name}`}>
             <div className="px-4 py-6 sm:px-0">
                 <div className="sm:flex sm:items-center">
                     <div className="sm:flex-auto">
                         <h1 className="text-base font-semibold leading-6 text-gray-900">
-                            Products & Services for {chatbot.name}
+                            Programs & Services for {chatbot.name}
                         </h1>
                         <p className="mt-2 text-sm text-gray-700">
-                            Manage your products and services to help your chatbot provide better recommendations and information to users.
+                            Manage MIU programs, departments, services, and key information to help the assistant answer users accurately.
                         </p>
                     </div>
                     <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
@@ -216,7 +216,7 @@ export default function ChatbotProducts({ chatbot, products }) {
                             className="block rounded-md bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
                         >
                             <PlusIcon className="h-4 w-4 inline mr-1" />
-                            Add {products.data.length === 0 ? 'First ' : ''}Product/Service
+                            Add {products.data.length === 0 ? 'First ' : ''}Program/Service
                         </button>
                     </div>
                 </div>
@@ -225,7 +225,7 @@ export default function ChatbotProducts({ chatbot, products }) {
                     <div className="mt-8 bg-white shadow sm:rounded-lg">
                         <div className="px-4 py-5 sm:p-6">
                             <h3 className="text-base font-semibold leading-6 text-gray-900">
-                                {editingProduct ? 'Edit' : 'Add New'} Product/Service
+                                {editingProduct ? 'Edit' : 'Add New'} Program/Service
                             </h3>
                             <form onSubmit={submit} className="mt-6 space-y-6">
                                 {/* Smart Extraction Section */}
@@ -233,9 +233,9 @@ export default function ChatbotProducts({ chatbot, products }) {
                                     <div className="border-2 border-dashed border-indigo-300 rounded-lg p-6 bg-indigo-50">
                                         <div className="text-center">
                                             <SparklesIcon className="mx-auto h-12 w-12 text-indigo-400" />
-                                            <h3 className="mt-2 text-sm font-semibold text-indigo-900">Smart Product Extraction</h3>
+                                            <h3 className="mt-2 text-sm font-semibold text-indigo-900">Smart Information Extraction</h3>
                                             <p className="mt-1 text-sm text-indigo-700">
-                                                Enter a product URL or describe your product/service to auto-fill the form
+                                                Enter a program/service URL or describe MIU information to auto-fill the form
                                             </p>
                                             <div className="mt-4">
                                                 <div className="flex rounded-md shadow-sm">
@@ -267,7 +267,7 @@ export default function ChatbotProducts({ chatbot, products }) {
                                                     </button>
                                                 </div>
                                                 <p className="mt-2 text-xs text-indigo-600">
-                                                    Supports URLs from product pages, or detailed text descriptions of your product/service
+                                                    Supports URLs from program/service pages, or detailed text descriptions of MIU information
                                                 </p>
                                             </div>
                                         </div>
@@ -428,7 +428,7 @@ export default function ChatbotProducts({ chatbot, products }) {
                                         disabled={processing}
                                         className="inline-flex justify-center rounded-md border border-transparent bg-indigo-600 py-2 px-4 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50"
                                     >
-                                        {processing ? 'Saving...' : editingProduct ? 'Update' : 'Create'} Product/Service
+                                        {processing ? 'Saving...' : editingProduct ? 'Update' : 'Create'} Program/Service
                                     </button>
                                 </div>
                             </form>
