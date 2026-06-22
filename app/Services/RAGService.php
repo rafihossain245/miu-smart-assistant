@@ -346,7 +346,7 @@ class RAGService
                 'show_contact_info' => $responseData['show_contact_info'] ?? false,
             ];
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('RAG Service Error: ' . $e->getMessage());
 
             return [
@@ -354,6 +354,82 @@ class RAGService
                 'sources' => [],
             ];
         }
+    }
+
+    protected function answerRosterMembershipQuestion(string $question, int $chatbotId): ?string
+    {
+        if (!$this->isRosterMembershipQuery($question)) {
+            return null;
+        }
+
+        $terms = $this->extractRosterSearchTerms($question);
+
+        $query = Source::where('chatbot_id', $chatbotId)
+            ->where('status', 'completed')
+            ->whereNotNull('content');
+
+        if (!empty($terms)) {
+            $query->where(function ($sourceQuery) use ($terms) {
+                foreach ($terms as $term) {
+                    $likeTerm = '%' . strtolower($term) . '%';
+                    $sourceQuery->orWhereRaw('LOWER(title) LIKE ?', [$likeTerm])
+                        ->orWhereRaw('LOWER(content) LIKE ?', [$likeTerm]);
+                }
+            });
+        }
+
+        $sources = $query->orderByDesc('priority_score')
+            ->limit(5)
+            ->get(['title', 'type', 'content']);
+
+        if ($sources->isEmpty()) {
+            return null;
+        }
+
+        $context = $sources->map(function ($source) {
+            return "Source: {$source->title}\nType: {$source->type}\nContent:\n" . substr($source->content, 0, 4000);
+        })->toArray();
+
+        $systemPrompt = $this->buildSystemPrompt($chatbotId) . "\n\n"
+            . "ROSTER/LIST QUESTION RULES:\n"
+            . "- Answer only from the provided source content.\n"
+            . "- If the requested student, batch, roster, or list is present, return the matching names/details clearly.\n"
+            . "- If the exact requested list is not present, say you could not find that exact list in the knowledge base.\n"
+            . "- Do not invent names, IDs, batches, departments, or contact details.";
+
+        return $this->openAIService->generateChatResponse($systemPrompt, $question, $context);
+    }
+
+    protected function isRosterMembershipQuery(string $question): bool
+    {
+        $normalized = $this->normalizeTrainingText($question);
+
+        $hasRosterIntent = preg_match('/\b(list|roster|students?|members?|names?|classmates?|batchmates?)\b/', $normalized);
+        $hasGroupQualifier = preg_match('/\b(batch|section|semester|department|dept|class|year|intake|session)\b/', $normalized)
+            || preg_match('/\b\d+(st|nd|rd|th)?\b/', $normalized);
+
+        return (bool) ($hasRosterIntent && $hasGroupQualifier);
+    }
+
+    protected function extractRosterSearchTerms(string $question): array
+    {
+        $normalized = $this->normalizeTrainingText($question);
+        $words = $this->meaningfulWords($normalized);
+        $terms = [];
+
+        foreach ($words as $word) {
+            if (preg_match('/^\d+(st|nd|rd|th)?$/', $word)) {
+                $terms[] = preg_replace('/(st|nd|rd|th)$/', '', $word);
+                $terms[] = $word;
+                continue;
+            }
+
+            if (!in_array($word, ['give', 'show', 'tell', 'student', 'students', 'member', 'members', 'list', 'name', 'names'], true)) {
+                $terms[] = $word;
+            }
+        }
+
+        return array_values(array_unique(array_merge($terms, ['student', 'students', 'batch', 'list'])));
     }
 
     protected function buildSystemPrompt(int $chatbotId = null): string
