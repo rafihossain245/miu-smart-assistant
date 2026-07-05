@@ -76,7 +76,7 @@ class RAGService
                     []  // No products needed for simple interactions
                 );
 
-                $response = $responseData['content'];
+                $response = $this->removeInternalSourceText($responseData['content']);
 
                 $sources = [];
 
@@ -112,6 +112,7 @@ class RAGService
 
             $rosterResponse = $this->answerRosterMembershipQuestion($question, $chatbotId);
             if ($rosterResponse !== null) {
+                $rosterResponse = $this->removeInternalSourceText($rosterResponse);
                 $sources = [];
 
                 $conversation->messages()->create([
@@ -249,7 +250,7 @@ class RAGService
 
                     // Prepare context from retrieved sources with more content
                     $baseContext = $similarSources->map(function ($source) {
-                        return "Source: {$source->title}\nType: {$source->type}\nContent: " . substr($source->content, 0, 1000) . (strlen($source->content) > 1000 ? "..." : "");
+                        return "Knowledge content:\n" . substr($source->content, 0, 1000) . (strlen($source->content) > 1000 ? "..." : "");
                     })->toArray();
 
                     $baseSimilarityScore = $similarSources->first()->distance;
@@ -310,6 +311,8 @@ class RAGService
                     $sources = [];
                 }
             }
+
+            $response = $this->removeInternalSourceText($response);
 
             // Conversation was already created at the beginning for context
 
@@ -387,7 +390,7 @@ class RAGService
         }
 
         $context = $sources->map(function ($source) {
-            return "Source: {$source->title}\nType: {$source->type}\nContent:\n" . substr($source->content, 0, 4000);
+            return "Knowledge content:\n" . substr($source->content, 0, 4000);
         })->toArray();
 
         $systemPrompt = $this->buildSystemPrompt($chatbotId) . "\n\n"
@@ -395,9 +398,24 @@ class RAGService
             . "- Answer only from the provided source content.\n"
             . "- If the requested student, batch, roster, or list is present, return the matching names/details clearly.\n"
             . "- If the exact requested list is not present, say you could not find that exact list in the knowledge base.\n"
-            . "- Do not invent names, IDs, batches, departments, or contact details.";
+            . "- Do not invent names, IDs, batches, departments, or contact details.\n"
+            . "- Never include source names, source titles, file types, or labels like Source, Type, or Content in the answer.\n\n"
+            . "ROSTER/LIST FORMATTING (MANDATORY):\n"
+            . "- Never dump the raw source text as one block or paragraph - always restructure it into a clean numbered list.\n"
+            . "- Give each person their own numbered entry, e.g. \"1. **Dr. Md. Aminul Islam** - Professor & Head of Department\".\n"
+            . "- Put the person's name in bold, followed by a dash and their role/designation - do not use \"Name =\" or \"Designation =\" labels.\n"
+            . "- Put each entry on its own line/paragraph - never combine multiple people into one sentence.\n"
+            . "- If a group/department heading applies to the whole list, state it once at the top, not before every entry.";
 
         return $this->openAIService->generateChatResponse($systemPrompt, $question, $context);
+    }
+
+    protected function removeInternalSourceText(string $response): string
+    {
+        $cleaned = preg_replace('/(?:^|\R)\s*(Source|Sources|Type|Content)\s*:\s*.*\z/is', '', $response);
+        $cleaned = preg_replace('/(?:^|\R)\s*(Source|Sources|Type)\s*:\s*[^\r\n]*/i', '', $cleaned ?? $response);
+
+        return trim($cleaned ?: $response);
     }
 
     protected function isRosterMembershipQuery(string $question): bool
@@ -1202,35 +1220,22 @@ The context from your knowledge base follows. Use it as your primary source of t
             return $question;
         }
 
-        // Extract product/service names from recent conversation
-        $mentionedEntities = [];
-        $lastFewMessages = array_slice($recentMessages, -4); // Look at last 4 messages
-
-        foreach ($lastFewMessages as $message) {
-            // Look for capitalized words that might be product names
-            preg_match_all('/\b([A-Z][a-z]+(?:[A-Z][a-z]+)*)\b/', $message, $matches);
-            if (!empty($matches[1])) {
-                foreach ($matches[1] as $entity) {
-                    // Filter out common words
-                    if (!in_array(strtolower($entity), ['Assistant', 'User', 'Hello', 'How', 'Can', 'Help', 'You', 'I', 'That', 'This', 'The'])) {
-                        $mentionedEntities[] = $entity;
-                    }
-                }
+        // Find the most recent prior user question to carry the topic forward
+        // (e.g. "only name plzz" after "give me teacher list" should still search for teachers)
+        $previousUserQuestion = null;
+        foreach (array_reverse($recentMessages) as $message) {
+            if (str_starts_with($message, 'User: ')) {
+                $previousUserQuestion = trim(substr($message, strlen('User: ')));
+                break;
             }
         }
 
-        // If we found entities and the question has references, enhance the query
-        if (!empty($mentionedEntities) && $this->detectReferences($question)) {
-            $uniqueEntities = array_unique($mentionedEntities);
-            $lastEntity = end($uniqueEntities); // Most recent entity mentioned
-
-            // Add context to the query for better embedding match
-            $enhancedQuery = $question . " " . $lastEntity;
+        if ($previousUserQuestion && strcasecmp($previousUserQuestion, $question) !== 0) {
+            $enhancedQuery = $previousUserQuestion . ' ' . $question;
 
             Log::info("Enhanced query for better context matching", [
                 'original' => $question,
                 'enhanced' => $enhancedQuery,
-                'entities' => $uniqueEntities
             ]);
 
             return $enhancedQuery;

@@ -5,6 +5,11 @@ import { ClipboardDocumentCheckIcon } from '@heroicons/react/24/solid';
 import ReactMarkdown from 'react-markdown';
 
 export default function EmbedView({ chatbot, tenant_id }) {
+    const cleanMessageContent = (content = '') => {
+        const cleaned = String(content).replace(/(?:^|\n)\s*(Source|Sources|Type|Content)\s*:[\s\S]*$/i, '').trim();
+        return cleaned || content;
+    };
+
     // Session management
     const SESSION_EXPIRY_DAYS = 7;
     const SESSION_KEY = `ai_chatbot_embed_session_${chatbot.id}`;
@@ -676,14 +681,14 @@ export default function EmbedView({ chatbot, tenant_id }) {
                                                         a: ({ children, href }) => <ContactLink href={href}>{children}</ContactLink>,
                                                     }}
                                                 >
-                                                    {message.content}
+                                                    {cleanMessageContent(message.content)}
                                                 </ReactMarkdown>
                                             </div>
                                         ) : (
-                                            <div className="text-sm leading-relaxed whitespace-pre-line">{message.content}</div>
+                                            <div className="text-sm leading-relaxed whitespace-pre-line">{cleanMessageContent(message.content)}</div>
                                         )}
 
-                                        {message.sources && message.sources.length > 0 && (
+                                        {false && message.sources && message.sources.length > 0 && (
                                             <div className="mt-3 pt-3 border-t border-gray-200">
                                                 <p className="text-xs font-medium text-gray-500 mb-2">Sources:</p>
                                                 <div className="space-y-1">
@@ -1015,14 +1020,14 @@ export default function EmbedView({ chatbot, tenant_id }) {
                                                             a: ({ children, href }) => <ContactLink href={href}>{children}</ContactLink>,
                                                         }}
                                                     >
-                                                        {message.content}
+                                                        {cleanMessageContent(message.content)}
                                                     </ReactMarkdown>
                                                 </div>
                                             ) : (
-                                                <div className="text-sm leading-relaxed whitespace-pre-line">{message.content}</div>
+                                                <div className="text-sm leading-relaxed whitespace-pre-line">{cleanMessageContent(message.content)}</div>
                                             )}
 
-                                            {message.sources && message.sources.length > 0 && (
+                                            {false && message.sources && message.sources.length > 0 && (
                                                 <div className="mt-3 pt-3 border-t border-gray-200">
                                                     <p className="text-xs font-medium text-gray-500 mb-2">Sources:</p>
                                                     <div className="space-y-1">

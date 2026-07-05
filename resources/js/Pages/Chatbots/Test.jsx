@@ -7,6 +7,11 @@ import ReactMarkdown from 'react-markdown';
 import { useEcho } from '../../contexts/EchoContext';
 
 export default function TestChatbot({ chatbot }) {
+    const cleanMessageContent = (content = '') => {
+        const cleaned = String(content).replace(/(?:^|\n)\s*(Source|Sources|Type|Content)\s*:[\s\S]*$/i, '').trim();
+        return cleaned || content;
+    };
+
     // Session management
     const SESSION_EXPIRY_DAYS = 7;
     const SESSION_KEY = `ai_chatbot_session_${chatbot.id}`;
@@ -908,11 +913,11 @@ export default function TestChatbot({ chatbot }) {
                                                             a: ({ children, href }) => <ContactLink href={href}>{children}</ContactLink>,
                                                         }}
                                                     >
-                                                        {message.content}
+                                                        {cleanMessageContent(message.content)}
                                                     </ReactMarkdown>
                                                 </div>
                                             ) : (
-                                                <div className="text-sm leading-relaxed whitespace-pre-line">{message.content}</div>
+                                                <div className="text-sm leading-relaxed whitespace-pre-line">{cleanMessageContent(message.content)}</div>
                                             )}
                                         </div>
 

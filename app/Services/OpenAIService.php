@@ -78,17 +78,30 @@ class OpenAIService
 
             $messages[] = ['role' => 'user', 'content' => $userMessage];
 
-            $response = $client->chat()->create([
+            $requestPayload = [
                 'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
                 'messages' => $messages,
                 'max_tokens' => 1000,
                 'temperature' => 0.7,
-            ]);
+            ];
 
+            $response = $client->chat()->create($requestPayload);
             $content = $response->choices[0]->message->content ?? null;
+
+            // Some OpenRouter models intermittently return an empty body with finish_reason "stop" - retry once
             if (!is_string($content) || trim($content) === '') {
-                Log::warning('OpenAI Chat returned empty content', [
-                    'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
+                Log::warning('OpenAI Chat returned empty content, retrying once', [
+                    'model' => $requestPayload['model'],
+                    'finish_reason' => $response->choices[0]->finishReason ?? null,
+                ]);
+
+                $response = $client->chat()->create($requestPayload);
+                $content = $response->choices[0]->message->content ?? null;
+            }
+
+            if (!is_string($content) || trim($content) === '') {
+                Log::warning('OpenAI Chat returned empty content after retry', [
+                    'model' => $requestPayload['model'],
                     'finish_reason' => $response->choices[0]->finishReason ?? null,
                 ]);
 

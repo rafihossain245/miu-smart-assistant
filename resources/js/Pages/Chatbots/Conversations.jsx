@@ -5,6 +5,11 @@ import ReactMarkdown from 'react-markdown';
 import { toast } from 'react-toastify';
 
 export default function ChatbotConversations({ chatbot, conversations }) {
+    const cleanMessageContent = (content = '') => {
+        const cleaned = String(content).replace(/(?:^|\n)\s*(Source|Sources|Type|Content)\s*:[\s\S]*$/i, '').trim();
+        return cleaned || content;
+    };
+
     // Enhanced contact link component that handles multiple contact types
     const ContactLink = ({ children }) => {
         // Extract text from React children, handling markdown elements properly
@@ -928,11 +933,11 @@ export default function ChatbotConversations({ chatbot, conversations }) {
                                                                 ),
                                                             }}
                                                         >
-                                                            {message.content}
+                                                            {cleanMessageContent(message.content)}
                                                         </ReactMarkdown>
                                                     </div>
                                                 ) : (
-                                                    <p className="text-sm leading-relaxed whitespace-pre-line">{message.content}</p>
+                                                    <p className="text-sm leading-relaxed whitespace-pre-line">{cleanMessageContent(message.content)}</p>
                                                 )}
                                                 <div className="flex items-center justify-between mt-2">
                                                     <span className="text-xs opacity-70">
@@ -943,7 +948,7 @@ export default function ChatbotConversations({ chatbot, conversations }) {
                                                     )}
                                                 </div>
 
-                                                {message.sources && message.sources.length > 0 && (
+                                                {false && message.sources && message.sources.length > 0 && (
                                                     <div className="mt-3 pt-3 border-t border-gray-200">
                                                         <p className="text-xs font-medium text-gray-500 mb-2">Sources:</p>
                                                         <div className="space-y-1">

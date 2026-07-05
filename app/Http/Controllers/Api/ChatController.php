@@ -104,8 +104,7 @@ class ChatController extends Controller
                 $query->orderBy('created_at', 'asc');
             }])
             ->first();
-        return response()->json($conversation);
-        
+
         if (!$conversation) {
             return response()->json(['messages' => []]);
         }
