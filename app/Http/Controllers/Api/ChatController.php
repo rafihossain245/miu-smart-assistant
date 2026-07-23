@@ -65,7 +65,7 @@ class ChatController extends Controller
                 'session_id' => $request->session_id,
                 'exception' => $e,
             ]);
-
+                                                
             return response()->json([
                 'error' => 'An error occurred while processing your request',
                 'message' => config('app.debug') ? $e->getMessage() : 'Please try again later',
