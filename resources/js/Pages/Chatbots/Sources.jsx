@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useForm, Link, router } from '@inertiajs/react';
 import ChatbotLayout from '../../Layouts/ChatbotLayout';
 import Pagination from '../../Components/Pagination';
-import { PlusIcon, DocumentTextIcon, LinkIcon, FilmIcon, ChatBubbleLeftRightIcon, ArrowPathIcon, MapIcon, QueueListIcon, WrenchScrewdriverIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, DocumentTextIcon, LinkIcon, FilmIcon, ChatBubbleLeftRightIcon, ArrowPathIcon, MapIcon, QueueListIcon, WrenchScrewdriverIcon, PhotoIcon, TableCellsIcon } from '@heroicons/react/24/outline';
 import { useEcho } from '../../contexts/EchoContext';
 
 const sourceTypeIcons = {
@@ -13,6 +13,8 @@ const sourceTypeIcons = {
     sitemap: MapIcon,
     youtube_playlist: QueueListIcon,
     technical_issue: WrenchScrewdriverIcon,
+    image: PhotoIcon,
+    excel: TableCellsIcon,
 
     //Additional types can be mapped here
     pdf_chunk: DocumentTextIcon,
@@ -45,6 +47,18 @@ export default function ChatbotSources({ chatbot, sources }) {
         content: '',
         file: null,
     });
+
+    const sourceTypes = [
+        { key: 'url', label: 'Website URL', icon: LinkIcon },
+        { key: 'pdf', label: 'PDF Upload', icon: DocumentTextIcon },
+        { key: 'image', label: 'Image Upload', icon: PhotoIcon },
+        { key: 'excel', label: 'Excel Upload', icon: TableCellsIcon },
+        { key: 'youtube', label: 'YouTube Video', icon: FilmIcon },
+        { key: 'youtube_playlist', label: 'YouTube Playlist', icon: QueueListIcon },
+        { key: 'text', label: 'Direct Text', icon: ChatBubbleLeftRightIcon },
+        { key: 'sitemap', label: 'Sitemap URLs', icon: MapIcon },
+        { key: 'technical_issue', label: 'Technical Issue', icon: WrenchScrewdriverIcon },
+    ];
 
     // Listen for real-time source updates
     useEffect(() => {
@@ -134,6 +148,13 @@ export default function ChatbotSources({ chatbot, sources }) {
     const handleTypeChange = (type) => {
         setSelectedType(type);
         setData('type', type);
+        setData('file', null);
+        if (type !== 'text' && type !== 'technical_issue') {
+            setData('content', '');
+        }
+        if (type !== 'url' && type !== 'youtube' && type !== 'youtube_playlist' && type !== 'sitemap') {
+            setData('url', '');
+        }
     };
 
     const syncSource = async (sourceId) => {
@@ -259,15 +280,7 @@ export default function ChatbotSources({ chatbot, sources }) {
                                 <div className="mb-6">
                                     <label className="text-sm font-medium text-gray-900">Source Type</label>
                                     <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                                        {[
-                                            { key: 'url', label: 'Website URL', icon: LinkIcon },
-                                            { key: 'pdf', label: 'PDF Upload', icon: DocumentTextIcon },
-                                            { key: 'youtube', label: 'YouTube Video', icon: FilmIcon },
-                                            { key: 'youtube_playlist', label: 'YouTube Playlist', icon: QueueListIcon },
-                                            { key: 'text', label: 'Direct Text', icon: ChatBubbleLeftRightIcon },
-                                            { key: 'sitemap', label: 'Sitemap URLs', icon: MapIcon },
-                                            { key: 'technical_issue', label: 'Technical Issue', icon: WrenchScrewdriverIcon },
-                                        ].map((type) => {
+                                        {sourceTypes.map((type) => {
                                             const Icon = type.icon;
                                             return (
                                                 <button
@@ -388,6 +401,38 @@ export default function ChatbotSources({ chatbot, sources }) {
                                                 type="file"
                                                 id="file"
                                                 accept=".pdf"
+                                                onChange={(e) => setData('file', e.target.files[0])}
+                                                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                            />
+                                            {errors.file && <p className="mt-2 text-sm text-red-600">{errors.file}</p>}
+                                        </div>
+                                    )}
+
+                                    {selectedType === 'image' && (
+                                        <div>
+                                            <label htmlFor="file" className="block text-sm font-medium text-gray-700">
+                                                Image File
+                                            </label>
+                                            <input
+                                                type="file"
+                                                id="file"
+                                                accept=".jpg,.jpeg,.png,.gif,.webp"
+                                                onChange={(e) => setData('file', e.target.files[0])}
+                                                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                                            />
+                                            {errors.file && <p className="mt-2 text-sm text-red-600">{errors.file}</p>}
+                                        </div>
+                                    )}
+
+                                    {selectedType === 'excel' && (
+                                        <div>
+                                            <label htmlFor="file" className="block text-sm font-medium text-gray-700">
+                                                Excel File
+                                            </label>
+                                            <input
+                                                type="file"
+                                                id="file"
+                                                accept=".xlsx,.xls,.csv"
                                                 onChange={(e) => setData('file', e.target.files[0])}
                                                 className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
                                             />
