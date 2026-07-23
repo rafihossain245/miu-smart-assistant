@@ -33,7 +33,7 @@ class OpenAIService
         try {
             $response = $this->generateChatResponseWithUsage($systemPrompt, $userMessage, $context);
             return $response['content'];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('OpenAI Chat Error: ' . $e->getMessage());
             throw $e;
         }
@@ -85,16 +85,26 @@ class OpenAIService
                 'temperature' => 0.7,
             ]);
 
+            $content = $response->choices[0]->message->content ?? null;
+            if (!is_string($content) || trim($content) === '') {
+                Log::warning('OpenAI Chat returned empty content', [
+                    'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
+                    'finish_reason' => $response->choices[0]->finishReason ?? null,
+                ]);
+
+                $content = 'I found relevant information, but I could not generate a complete answer right now. Please try again.';
+            }
+
             return [
-                'content' => $response->choices[0]->message->content,
+                'content' => $content,
                 'usage' => [
-                    'prompt_tokens' => $response->usage->promptTokens,
-                    'completion_tokens' => $response->usage->completionTokens,
-                    'total_tokens' => $response->usage->totalTokens,
+                    'prompt_tokens' => $response->usage->promptTokens ?? 0,
+                    'completion_tokens' => $response->usage->completionTokens ?? 0,
+                    'total_tokens' => $response->usage->totalTokens ?? 0,
                 ],
                 'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
             ];
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('OpenAI Chat Error: ' . $e->getMessage());
             throw $e;
         }
@@ -147,7 +157,7 @@ class OpenAIService
                         'content' => [
                             [
                                 'type' => 'text',
-                                'text' => 'Extract all text from this image, especially focusing on conversations between customers and support representatives. Preserve the structure and format as much as possible.'
+                                'text' => 'Extract ALL text visible in this image, completely and accurately. If it is a table, schedule, or list (e.g. a course offering list or class routine), transcribe every row and preserve each row\'s column labels inline (e.g. "Course Code: CSE101, Title: Introduction to Programming, Credit: 3, Teacher: Dr. X, Time: Sun/Tue 9:00-10:30") so each row stays understandable on its own, out of context. If it is a conversation/chat screenshot, preserve speaker names and message order. Do not summarize or omit any rows or details.'
                             ],
                             [
                                 'type' => 'image_url',

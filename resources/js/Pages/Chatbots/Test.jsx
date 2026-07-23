@@ -651,7 +651,7 @@ export default function TestChatbot({ chatbot }) {
     };
 
     return (
-        <ChatbotLayout chatbot={chatbot} title={`Test - ${chatbot.name}`} enableScroll={false}>
+        <ChatbotLayout chatbot={chatbot} title={`Test Assistant - ${chatbot.name}`} enableScroll={false}>
             <div className="flex-1 flex flex-col bg-gradient-to-br from-purple-50 via-white to-pink-50 overflow-hidden">
                 {/* Fixed Header */}
                 <div className="flex-shrink-0 text-center py-6 px-4 relative">

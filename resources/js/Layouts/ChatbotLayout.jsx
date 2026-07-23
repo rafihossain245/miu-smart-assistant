@@ -4,7 +4,6 @@ import AppLayout from './AppLayout';
 import {
     DocumentTextIcon,
     EyeIcon,
-    CodeBracketIcon,
     ChartBarIcon,
     ChatBubbleLeftRightIcon,
     Cog6ToothIcon,
@@ -14,34 +13,28 @@ import {
 
 const sidebarItems = [
     {
-        name: 'Manage Sources',
+        name: 'Knowledge Base',
         description: 'Add & manage knowledge base',
         href: 'chatbots.sources',
         icon: DocumentTextIcon,
     },
     {
-        name: 'Products & Services',
-        description: 'Manage your offerings',
+        name: 'Programs & Services',
+        description: 'Manage MIU information',
         href: 'chatbots.products',
         icon: ShoppingBagIcon,
     },
     {
-        name: 'Training Data',
-        description: 'Query examples & AI training',
+        name: 'Response Training',
+        description: 'Query examples & responses',
         href: 'chatbots.training',
         icon: AcademicCapIcon,
     },
     {
-        name: 'Test Chatbot',
-        description: 'Test responses in sandbox',
+        name: 'Test Assistant',
+        description: 'Test assistant responses',
         href: 'chatbots.test',
         icon: EyeIcon,
-    },
-    {
-        name: 'Get Embed Code',
-        description: 'Embed on your website',
-        href: 'chatbots.embed',
-        icon: CodeBracketIcon,
     },
     {
         name: 'View Analytics',
