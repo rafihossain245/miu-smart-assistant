@@ -59,6 +59,24 @@ class ProcessSourceContent implements ShouldQueue
                     }
                     break;
 
+                case 'image':
+                    if (Storage::exists($this->source->url)) {
+                        $filePath = Storage::path($this->source->url);
+                        $extractedData = $contentService->extractFromImage($filePath);
+                    } else {
+                        throw new \Exception('Image file not found');
+                    }
+                    break;
+
+                case 'excel':
+                    if (Storage::exists($this->source->url)) {
+                        $filePath = Storage::path($this->source->url);
+                        $extractedData = $contentService->extractFromExcel($filePath);
+                    } else {
+                        throw new \Exception('Excel file not found');
+                    }
+                    break;
+
                 case 'youtube':
                     $extractedData = $contentService->extractFromYoutube($this->source->url);
                     break;

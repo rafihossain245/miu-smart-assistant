@@ -214,11 +214,11 @@ class ChatbotController extends Controller
         $this->authorize('update', $chatbot);
 
         $validated = $request->validate([
-            'type' => 'required|in:url,pdf,youtube,text,sitemap,youtube_playlist,technical_issue',
+            'type' => 'required|in:url,pdf,youtube,text,sitemap,youtube_playlist,technical_issue,image,excel',
             'title' => 'required|string|max:255',
-            'url' => 'required_unless:type,text,pdf,technical_issue|nullable|string',
+            'url' => 'required_unless:type,text,pdf,technical_issue,image,excel|nullable|string',
             'content' => 'required_if:type,text,technical_issue|nullable|string',
-            'file' => 'required_if:type,pdf|nullable|file|mimes:pdf|max:10240', // 10MB max
+            'file' => 'required_if:type,pdf,image,excel|nullable|file|mimes:pdf,jpeg,png,gif,webp,xlsx,xls,csv|max:10240', // 10MB max
         ]);
 
         $sourceData = [
@@ -228,9 +228,15 @@ class ChatbotController extends Controller
             'status' => 'pending',
         ];
 
-        if ($validated['type'] === 'pdf' && $request->hasFile('file')) {
+        if (in_array($validated['type'], ['pdf', 'image', 'excel']) && $request->hasFile('file')) {
             $file = $request->file('file');
-            $path = $file->store('pdfs', 'local');
+            $folder = match($validated['type']) {
+                'pdf' => 'pdfs',
+                'image' => 'images',
+                'excel' => 'excel',
+                default => 'files'
+            };
+            $path = $file->store($folder, 'local');
             $sourceData['url'] = $path;
             $sourceData['content'] = ''; // Will be extracted by job
         } elseif (in_array($validated['type'], ['text', 'technical_issue'])) {

@@ -157,7 +157,7 @@ class OpenAIService
                         'content' => [
                             [
                                 'type' => 'text',
-                                'text' => 'Extract all text from this image, especially focusing on conversations between customers and support representatives. Preserve the structure and format as much as possible.'
+                                'text' => 'Extract ALL text visible in this image, completely and accurately. If it is a table, schedule, or list (e.g. a course offering list or class routine), transcribe every row and preserve each row\'s column labels inline (e.g. "Course Code: CSE101, Title: Introduction to Programming, Credit: 3, Teacher: Dr. X, Time: Sun/Tue 9:00-10:30") so each row stays understandable on its own, out of context. If it is a conversation/chat screenshot, preserve speaker names and message order. Do not summarize or omit any rows or details.'
                             ],
                             [
                                 'type' => 'image_url',

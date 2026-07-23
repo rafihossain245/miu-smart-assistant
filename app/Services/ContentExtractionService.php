@@ -4,6 +4,8 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use Symfony\Component\HttpFoundation\File\File as SymfonyFile;
 use Smalot\PdfParser\Parser as PdfParser;
 
 class ContentExtractionService
@@ -216,6 +218,85 @@ Please analyze this content and provide an enhanced version optimized for chatbo
         }
     }
 
+    public function extractFromImage(string $filePath): array
+    {
+        try {
+            $title = pathinfo($filePath, PATHINFO_FILENAME);
+            $content = '';
+
+            // Use OpenAI Vision API to extract text from image
+            if (file_exists($filePath)) {
+                $imageFile = new SymfonyFile($filePath);
+                $content = $this->openAIService->extractTextFromImage($imageFile);
+            }
+
+            // If no content extracted, use filename as fallback
+            if (empty($content)) {
+                $content = 'Image: ' . $title;
+            }
+
+            return [
+                'title' => $title,
+                'content' => $content,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Image extraction error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
+    public function extractFromExcel(string $filePath): array
+    {
+        try {
+            $title = pathinfo($filePath, PATHINFO_FILENAME);
+            $content = '';
+
+            // Read Excel file using PhpSpreadsheet
+            $spreadsheet = IOFactory::load($filePath);
+            
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $content .= "Sheet: " . $sheet->getTitle() . "\n\n";
+                
+                foreach ($sheet->getRowIterator() as $row) {
+                    $cellIterator = $row->getCellIterator();
+                    $cellIterator->setIterateOnlyExistingCells(false);
+                    
+                    $rowData = [];
+                    foreach ($cellIterator as $cell) {
+                        $value = $cell->getValue();
+                        if ($value !== null) {
+                            $rowData[] = $value;
+                        }
+                    }
+                    
+                    if (!empty($rowData)) {
+                        $content .= implode(" | ", $rowData) . "\n";
+                    }
+                }
+                $content .= "\n";
+            }
+
+            // Clean up content
+            $content = preg_replace('/\s+/', ' ', $content);
+            $content = trim($content);
+
+            // If no content extracted, use filename as fallback
+            if (empty($content)) {
+                $content = 'Excel file: ' . $title;
+            }
+
+            return [
+                'title' => $title,
+                'content' => $content,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Excel extraction error: ' . $e->getMessage());
+            throw $e;
+        }
+    }
+
     public function extractFromYoutube(string $url): array
     {
         try {
@@ -371,7 +452,7 @@ Please analyze this content and provide an enhanced version optimized for chatbo
             $indicators = array_slice($indicators, 0, 10); // Limit to top 10
 
         } catch (\Exception $e) {
-            \Log::info('Could not extract company indicators: ' . $e->getMessage());
+            Log::info('Could not extract company indicators: ' . $e->getMessage());
         }
 
         return $indicators;
