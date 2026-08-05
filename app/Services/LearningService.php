@@ -120,28 +120,34 @@ class LearningService
     }
 
     /**
-     * Create a new source from user correction if substantial enough
+     * Queue a new source from user correction if substantial enough.
+     *
+     * The source is parked in 'pending_review' so it stays out of every retrieval
+     * path (those all filter on status = 'completed'). Embedding is deferred until
+     * an owner approves it, so rejected corrections cost nothing.
      */
     protected function createSourceFromCorrection(ChatbotLearningData $learningData, string $correction): void
     {
         // Only create source if correction is substantial (>100 characters)
         if (strlen($correction) > 100) {
             try {
-                // Generate embedding for the correction
-                $embedding = $this->openAIService->generateEmbedding($correction);
-
                 Source::create([
                     'chatbot_id' => $learningData->chatbot_id,
                     'type' => 'text',
                     'title' => 'User Correction: ' . substr($learningData->user_query, 0, 50) . '...',
                     'content' => $correction,
-                    'embedding' => $embedding,
-                    'status' => 'completed',
+                    'status' => 'pending_review',
+                    'metadata' => [
+                        'origin' => 'user_correction',
+                        'learning_data_id' => $learningData->id,
+                        'user_query' => $learningData->user_query,
+                        'submitted_at' => now()->toIso8601String(),
+                    ],
                 ]);
 
-                Log::info("Created new source from user correction for chatbot {$learningData->chatbot_id}");
+                Log::info("Queued user correction for review on chatbot {$learningData->chatbot_id}");
             } catch (\Exception $e) {
-                Log::error("Failed to create source from user correction: " . $e->getMessage());
+                Log::error("Failed to queue source from user correction: " . $e->getMessage());
             }
         }
     }

@@ -71,7 +71,11 @@ class OpenAIService
                 });
 
                 if (!empty($validContextStrings)) {
-                    $contextMessage = "Context from knowledge base:\n\n" . implode("\n\n", $validContextStrings);
+                    // Delimit the reference block explicitly. Completion-style models otherwise
+                    // treat these "Source:/Type:/Content:" headers as text worth reproducing and
+                    // paste the raw context into the reply.
+                    $contextMessage = "Reference material (internal - do not quote verbatim):\n"
+                        . "<reference>\n" . implode("\n\n", $validContextStrings) . "\n</reference>";
                     $messages[] = ['role' => 'system', 'content' => $contextMessage];
                 }
             }
@@ -86,6 +90,10 @@ class OpenAIService
             ]);
 
             $content = $response->choices[0]->message->content ?? null;
+            if (is_string($content)) {
+                $content = $this->stripLeakedScaffolding($content);
+            }
+
             if (!is_string($content) || trim($content) === '') {
                 Log::warning('OpenAI Chat returned empty content', [
                     'model' => config('services.openai.chat_model', 'gpt-4o-mini'),
@@ -108,6 +116,53 @@ class OpenAIService
             Log::error('OpenAI Chat Error: ' . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Cut prompt scaffolding the model copied into its reply.
+     *
+     * The chat prompt carries reference blocks ("Source:/Type:/Content:") and a
+     * "User:/Assistant:" history transcript. Completion-style models continue those
+     * patterns instead of stopping, so the reply can carry a raw context dump or an
+     * invented next turn. Each pattern below is prompt structure that cannot occur in
+     * a genuine answer, so everything from the first match on is dropped.
+     */
+    private function stripLeakedScaffolding(string $content): string
+    {
+        // The model often renders these labels as markdown ("**User message:**"), so allow
+        // surrounding emphasis characters on every marker.
+        $emph = '[*_`~]{0,3}';
+
+        $markers = [
+            // reference block dump: Source:/Type:/Content: on consecutive lines
+            '/\n\s*' . $emph . 'Source:' . $emph . '\s*.+\n\s*' . $emph . 'Type:' . $emph . '\s*.+\n\s*' . $emph . 'Content:/',
+            '/\n\s*' . $emph . 'User message:' . $emph . '/',        // invented next turn
+            '/\n\s*' . $emph . '(User|Human):' . $emph . '\s/',      // transcript continuation
+            '/\n\s*<\/?reference>/',                                 // our own delimiter echoed back
+        ];
+
+        $cutAt = null;
+        foreach ($markers as $pattern) {
+            if (preg_match($pattern, $content, $matches, PREG_OFFSET_CAPTURE)) {
+                $offset = $matches[0][1];
+                $cutAt = $cutAt === null ? $offset : min($cutAt, $offset);
+            }
+        }
+
+        if ($cutAt === null) {
+            return $content;
+        }
+
+        $trimmed = rtrim(substr($content, 0, $cutAt));
+
+        Log::info('Stripped leaked prompt scaffolding from chat response', [
+            'original_length' => strlen($content),
+            'trimmed_length' => strlen($trimmed),
+        ]);
+
+        // If the model led with scaffolding there is nothing usable left; keep the
+        // original so the empty-content fallback below reports it honestly.
+        return trim($trimmed) === '' ? $content : $trimmed;
     }
 
     public function chunkText(string $text, int $maxChunkSize = 1000): array

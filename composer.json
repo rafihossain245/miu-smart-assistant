@@ -14,6 +14,7 @@
         "laravel/reverb": "^1.6",
         "laravel/tinker": "^2.10.1",
         "openai-php/client": "^0.16.1",
+        "phpoffice/phpspreadsheet": "^5.9",
         "predis/predis": "^3.2",
         "smalot/pdfparser": "^2.12"
     },

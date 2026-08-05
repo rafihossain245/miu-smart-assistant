@@ -117,10 +117,28 @@ export default function TestChatbot({ chatbot }) {
             
             if (data.messages && data.messages.length > 0) {
                 console.log('Loaded', data.messages.length, 'previous messages');
-                setMessages(data.messages.map(msg => ({
-                    ...msg,
-                    timestamp: new Date(msg.timestamp)
-                })));
+                const history = data.messages.map(msg => ({
+                    id: msg.id,
+                    content: msg.content,
+                    // API sends `isBot`; fall back to the raw column name just in case
+                    isBot: Boolean(msg.isBot ?? msg.is_bot),
+                    timestamp: new Date(msg.timestamp ?? msg.created_at),
+                    sources: msg.sources || [],
+                    learningDataId: msg.learningDataId ?? null,
+                    feedback: msg.feedback ?? null,
+                    showContactInfo: msg.showContactInfo ?? false
+                }));
+
+                // The welcome message is never persisted, so re-add it on top
+                setMessages([{
+                    id: 'welcome',
+                    content: chatbot.welcome_message,
+                    isBot: true,
+                    timestamp: history[0].timestamp,
+                    sources: [],
+                    learningDataId: null,
+                    feedback: null
+                }, ...history]);
             } else {
                 console.log('No previous messages found, starting fresh');
                 setMessages([{
@@ -643,6 +661,12 @@ export default function TestChatbot({ chatbot }) {
                 }),
             });
 
+            setMessages(prev => prev.map(m =>
+                m.id === messageId
+                    ? { ...m, correctionSubmitted: true }
+                    : m
+            ));
+
             setShowFeedbackForm(null);
             setFeedbackInput('');
         } catch (error) {
@@ -920,6 +944,108 @@ export default function TestChatbot({ chatbot }) {
                                         {message.isBot && message.showContactInfo && (
                                             <div className="mt-3">
                                                 <ContactInfo chatbot={chatbot} className="text-sm" />
+                                            </div>
+                                        )}
+
+                                        {/* Feedback + correction controls: only for bot replies that were recorded for learning */}
+                                        {message.isBot && message.learningDataId && (
+                                            <div className="mt-2">
+                                                <div className="flex items-center space-x-1">
+                                                    <button
+                                                        type="button"
+                                                        title="Helpful"
+                                                        onClick={() => handleFeedback(message.id, true)}
+                                                        className={`p-1.5 rounded-full transition-colors ${
+                                                            message.feedback === 'helpful'
+                                                                ? 'text-green-600 bg-green-50'
+                                                                : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
+                                                        }`}
+                                                    >
+                                                        {message.feedback === 'helpful' ? (
+                                                            <HandThumbUpSolidIcon className="w-4 h-4" />
+                                                        ) : (
+                                                            <HandThumbUpIcon className="w-4 h-4" />
+                                                        )}
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        title="Not helpful"
+                                                        onClick={() => handleFeedback(message.id, false)}
+                                                        className={`p-1.5 rounded-full transition-colors ${
+                                                            message.feedback === 'not_helpful'
+                                                                ? 'text-red-600 bg-red-50'
+                                                                : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
+                                                        }`}
+                                                    >
+                                                        {message.feedback === 'not_helpful' ? (
+                                                            <HandThumbDownSolidIcon className="w-4 h-4" />
+                                                        ) : (
+                                                            <HandThumbDownIcon className="w-4 h-4" />
+                                                        )}
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setShowFeedbackForm(showFeedbackForm === message.id ? null : message.id);
+                                                            setFeedbackInput('');
+                                                        }}
+                                                        className="ml-1 text-xs text-gray-500 hover:text-indigo-600 hover:underline"
+                                                    >
+                                                        Suggest a better answer
+                                                    </button>
+
+                                                    {message.correctionSubmitted && (
+                                                        <span className="ml-2 text-xs text-green-600">
+                                                            ✓ Sent for review
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {showFeedbackForm === message.id && (
+                                                    <div className="mt-2 p-3 bg-white border border-gray-200 rounded-xl shadow-sm">
+                                                        <textarea
+                                                            value={feedbackInput}
+                                                            onChange={(e) => setFeedbackInput(e.target.value)}
+                                                            rows={4}
+                                                            maxLength={5000}
+                                                            placeholder="Write the answer the assistant should have given..."
+                                                            className="w-full text-sm border border-gray-200 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                                        />
+                                                        <div className="flex items-center justify-between mt-2">
+                                                            <span
+                                                                className={`text-xs ${
+                                                                    feedbackInput.trim().length > 100
+                                                                        ? 'text-green-600'
+                                                                        : 'text-gray-400'
+                                                                }`}
+                                                            >
+                                                                {feedbackInput.trim().length} / 100 characters minimum
+                                                            </span>
+                                                            <div className="space-x-2">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => {
+                                                                        setShowFeedbackForm(null);
+                                                                        setFeedbackInput('');
+                                                                    }}
+                                                                    className="px-3 py-1.5 text-xs text-gray-600 hover:text-gray-800"
+                                                                >
+                                                                    Cancel
+                                                                </button>
+                                                                <button
+                                                                    type="button"
+                                                                    disabled={feedbackInput.trim().length <= 100}
+                                                                    onClick={() => handleCorrection(message.id, feedbackInput.trim())}
+                                                                    className="px-3 py-1.5 text-xs text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                                                >
+                                                                    Submit correction
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>

@@ -45,6 +45,11 @@ class Source extends Model
         return $query->where('status', 'pending');
     }
 
+    public function scopePendingReview($query)
+    {
+        return $query->where('status', 'pending_review');
+    }
+
     public function scopeProcessing($query)
     {
         return $query->where('status', 'processing');

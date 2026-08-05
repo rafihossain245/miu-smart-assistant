@@ -163,60 +163,80 @@ class IntelligentConversationService
                 break;
 
             case 'contact_request':
-                $guidelines .= "- This is a CONTACT REQUEST - user wants to communicate with the business\n";
-                $guidelines .= "- PRIORITY: Provide business contact information (WhatsApp, phone, email)\n";
-                $guidelines .= "- Do NOT provide product features or technical details\n";
-                $guidelines .= "- Focus on connecting them with the right person/channel\n";
-                $guidelines .= "- If WhatsApp requested, provide WhatsApp contact details\n";
-                $guidelines .= "- Be helpful and direct about contact options\n";
+                $guidelines .= "- This is a CONTACT REQUEST - the user wants to reach a person or office\n";
+                $guidelines .= "- Identify WHICH office fits their need (admission, registrar, accounts, a department)\n";
+                $guidelines .= "- Do NOT answer with programme, fee or academic details instead\n";
+                $guidelines .= "- Keep it short - the contact details themselves are shown separately below your reply\n";
                 break;
 
             case 'follow_up':
                 $guidelines .= "- This is a FOLLOW-UP question referring to previous conversation context\n";
                 $guidelines .= "- The user is asking for more details about something already discussed\n";
-                $guidelines .= "- Maintain strict topic continuity - continue with the same product/topic\n";
-                $guidelines .= "- Do NOT introduce new products - elaborate on the existing topic\n";
+                $guidelines .= "- Maintain strict topic continuity - stay on the same programme/topic\n";
+                $guidelines .= "- Do NOT introduce a new programme or department - elaborate on the existing one\n";
                 $guidelines .= "- Reference what was previously mentioned to maintain context\n";
-                break;
-
-            case 'reference_query':
-                $guidelines .= "- User is using references like 'it', 'this', 'that', 'them'\n";
-                $guidelines .= "- These refer to the most recently mentioned product/topic\n";
-                $guidelines .= "- Maintain the same subject matter throughout the response\n";
-                $guidelines .= "- Do NOT switch to different products or topics\n";
                 break;
 
             case 'help_request':
                 $guidelines .= "- The user is asking for help - respond with 'How can I help you?' or 'What do you need assistance with?'\n";
+                $guidelines .= "- Mention the areas you can cover: admission, programmes, fees, routines and results, campus facilities\n";
                 $guidelines .= "- Ask clarifying questions to understand their specific needs\n";
-                $guidelines .= "- Avoid generic responses\n";
                 break;
 
-            case 'ecommerce':
-                $guidelines .= "- Focus on ecommerce-related assistance\n";
-                $guidelines .= "- Ask about specific areas: products, orders, shipping, returns, etc.\n";
-                $guidelines .= "- Provide actionable suggestions\n";
+            case 'admission':
+                $guidelines .= "- This is an ADMISSION question from a prospective student\n";
+                $guidelines .= "- Lead with the concrete answer: eligibility, required documents, or the deadline\n";
+                $guidelines .= "- State dates and deadlines EXACTLY as they appear in the knowledge base - never estimate one\n";
+                $guidelines .= "- If the admission cycle or deadline is not in the knowledge base, say so and point them to the admission office\n";
+                $guidelines .= "- Close with the next practical step the student should take\n";
                 break;
 
-            case 'product_inquiry':
-                $guidelines .= "- Help with product-related questions\n";
-                $guidelines .= "- Use available product information if provided\n";
-                $guidelines .= "- Ask clarifying questions about specific products or features\n";
+            case 'fees_scholarship':
+                $guidelines .= "- This is a question about FEES, PAYMENT or SCHOLARSHIP\n";
+                $guidelines .= "- CRITICAL: quote every amount, percentage and waiver condition EXACTLY as written in the knowledge base\n";
+                $guidelines .= "- NEVER estimate, calculate, convert or round a figure that is not written there\n";
+                $guidelines .= "- If the exact figure is missing, say you cannot confirm it and refer them to the accounts or admission office\n";
+                $guidelines .= "- State what a quoted figure covers (per credit, per semester, one-time) so it cannot be misread\n";
+                $guidelines .= "- Mention waiver or scholarship eligibility conditions whenever you quote a discounted figure\n";
                 break;
 
-            case 'information_seeking':
-                $guidelines .= "- Provide accurate, helpful information\n";
-                $guidelines .= "- Use knowledge base sources when available\n";
-                $guidelines .= "- Offer to help with related topics\n";
+            case 'program_inquiry':
+                $guidelines .= "- This is a question about PROGRAMMES, DEPARTMENTS or COURSES\n";
+                $guidelines .= "- Use the knowledge base for programme names, durations, credit counts and department details\n";
+                $guidelines .= "- Group related programmes by school or faculty so the list is easy to scan\n";
+                $guidelines .= "- Do NOT invent a programme, specialisation or course code that is not in the knowledge base\n";
+                $guidelines .= "- Offer to go deeper on any single programme the student names\n";
+                break;
+
+            case 'academic_info':
+                $guidelines .= "- This is a question about ACADEMIC RECORDS or SCHEDULES (routine, exam, result, transcript, registration)\n";
+                $guidelines .= "- Reproduce routine and schedule rows exactly, keeping course, time, room and teacher together\n";
+                $guidelines .= "- You cannot look up an individual student's personal record - be clear about that and direct them to the correct office\n";
+                $guidelines .= "- Treat a complaint (result not published, registration blocked) as an academic matter, NOT a website fault\n";
+                $guidelines .= "- Do NOT suggest browser troubleshooting for these questions\n";
+                break;
+
+            case 'campus_facility':
+                $guidelines .= "- This is a question about CAMPUS FACILITIES (hostel, transport, library, labs, cafeteria, sports, medical)\n";
+                $guidelines .= "- Answer from the knowledge base, including location, timing and eligibility where available\n";
+                $guidelines .= "- If a facility differs by campus or by gender, state which one your answer applies to\n";
+                $guidelines .= "- Do NOT assume a facility exists just because it is common at other universities\n";
                 break;
 
             case 'technical_issue':
-                $guidelines .= "- This is a TECHNICAL ISSUE or troubleshooting request\n";
-                $guidelines .= "- Provide step-by-step troubleshooting solutions if available in knowledge base\n";
-                $guidelines .= "- Always suggest basic troubleshooting steps first (clear cache, try different browser, etc.)\n";
-                $guidelines .= "- IMPORTANT: Always offer to contact support if issue persists\n";
-                $guidelines .= "- Include contact information at the end of technical responses\n";
+                $guidelines .= "- The user reports a fault in the ONLINE PORTAL OR WEBSITE itself\n";
+                $guidelines .= "- Use troubleshooting steps from the knowledge base when they exist\n";
+                $guidelines .= "- Only suggest generic steps (reload the page, try another browser) when nothing specific is available\n";
+                $guidelines .= "- Do NOT ask for a password, one-time code or any other credential\n";
+                $guidelines .= "- IMPORTANT: Always offer the IT/support desk if the issue persists\n";
                 $guidelines .= "- Be empathetic about the user's frustration\n";
+                break;
+
+            case 'general':
+            default:
+                $guidelines .= "- Answer from the knowledge base and stay within what the university has actually published\n";
+                $guidelines .= "- If the knowledge base does not cover it, say so plainly instead of guessing\n";
+                $guidelines .= "- Offer the nearest thing you can help with, or point them to the right office\n";
                 break;
         }
 

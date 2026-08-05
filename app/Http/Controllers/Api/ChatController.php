@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Chatbot;
 use App\Models\Conversation;
+use App\Services\LearningService;
 use App\Services\RAGService;
 use App\Services\TenantDatabaseService;
 use Illuminate\Http\JsonResponse;
@@ -17,10 +18,12 @@ use Illuminate\Support\Facades\Cache;
 class ChatController extends Controller
 {
     protected RAGService $ragService;
+    protected LearningService $learningService;
 
-    public function __construct(RAGService $ragService)
+    public function __construct(RAGService $ragService, LearningService $learningService)
     {
         $this->ragService = $ragService;
+        $this->learningService = $learningService;
     }
 
     public function chat(Request $request): JsonResponse
@@ -73,6 +76,78 @@ class ChatController extends Controller
         }
     }
 
+    public function feedback(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'learning_data_id' => 'required|integer|exists:chatbot_learning_data,id',
+            'was_helpful' => 'required|boolean',
+            'details' => 'nullable|array',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $this->learningService->recordFeedback(
+                (int) $request->learning_data_id,
+                $request->boolean('was_helpful'),
+                $request->input('details', [])
+            );
+
+            return response()->json(['success' => true]);
+
+        } catch (\Throwable $e) {
+            Log::error('Feedback API Error: ' . $e->getMessage(), [
+                'learning_data_id' => $request->learning_data_id,
+                'exception' => $e,
+            ]);
+
+            return response()->json([
+                'error' => 'An error occurred while recording your feedback',
+                'message' => config('app.debug') ? $e->getMessage() : 'Please try again later',
+            ], 500);
+        }
+    }
+
+    public function correction(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'learning_data_id' => 'required|integer|exists:chatbot_learning_data,id',
+            'correction' => 'required|string|max:5000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Validation failed',
+                'messages' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $this->learningService->recordCorrection(
+                (int) $request->learning_data_id,
+                $request->correction
+            );
+
+            return response()->json(['success' => true]);
+
+        } catch (\Throwable $e) {
+            Log::error('Correction API Error: ' . $e->getMessage(), [
+                'learning_data_id' => $request->learning_data_id,
+                'exception' => $e,
+            ]);
+
+            return response()->json([
+                'error' => 'An error occurred while recording your correction',
+                'message' => config('app.debug') ? $e->getMessage() : 'Please try again later',
+            ], 500);
+        }
+    }
+
     public function getChatbotInfo(string $chatbotId): JsonResponse
     {
         try {
@@ -104,8 +179,7 @@ class ChatController extends Controller
                 $query->orderBy('created_at', 'asc');
             }])
             ->first();
-        return response()->json($conversation);
-        
+
         if (!$conversation) {
             return response()->json(['messages' => []]);
         }

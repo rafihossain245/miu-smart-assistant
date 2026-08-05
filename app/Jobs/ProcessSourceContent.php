@@ -101,6 +101,27 @@ class ProcessSourceContent implements ShouldQueue
                     throw new \Exception('Unknown source type: ' . $this->source->type);
             }
 
+            if (isset($extractedData['content'])) {
+                $extractedData['content'] = $contentService->sanitizeUtf8($extractedData['content']);
+            }
+            if (isset($extractedData['title'])) {
+                $extractedData['title'] = $contentService->sanitizeUtf8($extractedData['title']);
+            }
+
+            // A crawl that comes back near-empty means extraction picked up the wrong
+            // element, not that the page is short. Fail loudly instead of storing the
+            // fragment as a completed source that silently answers nothing.
+            if ($this->source->type === 'url') {
+                $extractedLength = strlen(trim($extractedData['content'] ?? ''));
+
+                if ($extractedLength < ContentExtractionService::MIN_EXTRACTED_CONTENT_LENGTH) {
+                    throw new \Exception(
+                        "Extracted only {$extractedLength} characters from {$this->source->url} - "
+                        . 'the page may be JavaScript-rendered, blocked, or behind a login.'
+                    );
+                }
+            }
+
             // Update content if extracted from external source
             if (!in_array($this->source->type, ['text', 'technical_issue'])) {
                 $updateData = [
@@ -287,6 +308,13 @@ class ProcessSourceContent implements ShouldQueue
                     // Extract content from URL
                     $extractedData = $contentService->extractFromUrl($url);
 
+                    if (isset($extractedData['content'])) {
+                        $extractedData['content'] = $contentService->sanitizeUtf8($extractedData['content']);
+                    }
+                    if (isset($extractedData['title'])) {
+                        $extractedData['title'] = $contentService->sanitizeUtf8($extractedData['title']);
+                    }
+
                     // Calculate priority score
                     $priorityScore = $contentService->calculatePriorityScore(
                         [],
@@ -309,8 +337,12 @@ class ProcessSourceContent implements ShouldQueue
                     // Fire source created event for real-time updates
                     event(new SourceCreated($newSource));
 
-                    // Generate embedding if content is available
-                    if (!empty($extractedData['content'])) {
+                    // Generate embedding only if the crawl actually produced a page.
+                    // A handful of characters means extraction grabbed the wrong element,
+                    // and embedding that fragment just pollutes the knowledge base.
+                    $extractedLength = strlen(trim($extractedData['content'] ?? ''));
+
+                    if ($extractedLength >= ContentExtractionService::MIN_EXTRACTED_CONTENT_LENGTH) {
                         $chunks = $openAIService->chunkText($extractedData['content'], 1000);
                         $contentForEmbedding = !empty($chunks) ? $chunks[0] : $extractedData['content'];
                         $embedding = $openAIService->generateEmbedding($contentForEmbedding);
@@ -324,7 +356,8 @@ class ProcessSourceContent implements ShouldQueue
                     } else {
                         $newSource->update([
                             'status' => 'failed',
-                            'error_message' => 'No content extracted',
+                            'error_message' => "Extracted only {$extractedLength} characters - "
+                                . 'the page may be JavaScript-rendered, blocked, or behind a login.',
                         ]);
                         $failCount++;
                     }

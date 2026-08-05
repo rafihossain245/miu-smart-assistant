@@ -17,6 +17,48 @@ class ContentExtractionService
         $this->openAIService = $openAIService;
     }
 
+    /**
+     * Strip byte sequences that aren't valid UTF-8 (e.g. lone/CESU-8-encoded
+     * surrogate halves from mis-encoded emoji in Excel/PDF/Office documents),
+     * which Postgres otherwise rejects outright at insert time.
+     */
+    public function sanitizeUtf8(string $text): string
+    {
+        $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $text);
+
+        if ($clean === false) {
+            $clean = preg_replace('/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]|\xED[\xA0-\xBF][\x80-\xBF]/', '', $text);
+        }
+
+        return $clean ?? '';
+    }
+
+    /**
+     * Below this many characters an extraction is treated as having failed rather
+     * than as a genuinely short page - it almost always means the crawler latched
+     * onto the wrong element (a modal header, a cookie banner) instead of the page.
+     */
+    public const MIN_EXTRACTED_CONTENT_LENGTH = 100;
+
+    /**
+     * Elements that never carry page content. Stripped before scoring so a long
+     * nav menu can't out-score the real article.
+     */
+    protected const NOISE_TAGS = [
+        'script', 'style', 'noscript', 'iframe', 'svg', 'form',
+        'nav', 'header', 'footer', 'aside',
+    ];
+
+    /**
+     * class/id fragments that mark chrome rather than content. Matched
+     * case-insensitively against both attributes.
+     */
+    protected const NOISE_PATTERNS = [
+        'modal', 'popup', 'cookie', 'consent', 'breadcrumb', 'sidebar', 'widget',
+        'menu', 'navbar', 'navigation', 'offcanvas', 'dropdown', 'social',
+        'share', 'comment', 'pagination', 'skip-link', 'screen-reader',
+    ];
+
     public function extractFromUrl(string $url): array
     {
         try {
@@ -32,41 +74,34 @@ class ContentExtractionService
 
             $html = $response->body();
 
-            // Extract title
-            preg_match('/<title[^>]*>(.*?)<\/title>/is', $html, $titleMatches);
-            $title = isset($titleMatches[1]) ? strip_tags(trim($titleMatches[1])) : 'Untitled';
+            if (trim($html) === '') {
+                throw new \Exception('Fetched URL returned an empty body');
+            }
 
-            // Remove script and style tags
-            $html = preg_replace('/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/mi', '', $html);
-            $html = preg_replace('/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/mi', '', $html);
+            $xpath = new \DOMXPath($this->loadHtmlDocument($html));
+            $title = $this->extractDocumentTitle($xpath);
 
-            // Extract main content (try to find article, main, or content divs)
-            $contentPatterns = [
-                '/<article[^>]*>(.*?)<\/article>/is',
-                '/<main[^>]*>(.*?)<\/main>/is',
-                '/<div[^>]*class="[^"]*content[^"]*"[^>]*>(.*?)<\/div>/is',
-                '/<div[^>]*id="[^"]*content[^"]*"[^>]*>(.*?)<\/div>/is',
-            ];
+            $this->stripNoiseNodes($xpath);
+            $content = $this->extractMainContent($xpath);
 
-            $content = '';
-            foreach ($contentPatterns as $pattern) {
-                if (preg_match($pattern, $html, $matches)) {
-                    $content = $matches[1];
-                    break;
+            // Themes name their wrappers unpredictably, so the chrome filter can
+            // occasionally swallow the page. Re-parse and strip structural tags
+            // only rather than reporting a page as empty.
+            if (strlen($content) < self::MIN_EXTRACTED_CONTENT_LENGTH) {
+                $retryXpath = new \DOMXPath($this->loadHtmlDocument($html));
+                $this->stripNoiseNodes($retryXpath, includeClassPatterns: false);
+                $retryContent = $this->extractMainContent($retryXpath);
+
+                if (strlen($retryContent) > strlen($content)) {
+                    Log::info('URL extraction fell back to tag-only filtering', [
+                        'url' => $url,
+                        'filtered_length' => strlen($content),
+                        'fallback_length' => strlen($retryContent),
+                    ]);
+
+                    $content = $retryContent;
                 }
             }
-
-            // If no content pattern found, use body
-            if (empty($content)) {
-                preg_match('/<body[^>]*>(.*?)<\/body>/is', $html, $bodyMatches);
-                $content = isset($bodyMatches[1]) ? $bodyMatches[1] : $html;
-            }
-
-            // Clean up the content
-            $content = strip_tags($content);
-            $content = html_entity_decode($content, ENT_QUOTES, 'UTF-8');
-            $content = preg_replace('/\s+/', ' ', $content);
-            $content = trim($content);
 
             return [
                 'title' => $title,
@@ -77,6 +112,195 @@ class ContentExtractionService
             Log::error('URL extraction error: ' . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Parse HTML into a DOMDocument. Unlike regex matching this understands
+     * nesting, so a container's closing tag is its own rather than the first
+     * </div> that happens to follow.
+     */
+    protected function loadHtmlDocument(string $html): \DOMDocument
+    {
+        $document = new \DOMDocument();
+
+        // Malformed markup is the norm on the open web - collect the warnings
+        // instead of letting them surface, and parse whatever we can.
+        $previous = libxml_use_internal_errors(true);
+
+        // Force UTF-8: without a hint libxml assumes ISO-8859-1 and mangles
+        // any non-ASCII text. mb_convert_encoding's HTML-ENTITIES mode is
+        // deprecated as of PHP 8.2, so declare the encoding inline instead.
+        $document->loadHTML(
+            '<?xml encoding="UTF-8">' . $html,
+            LIBXML_NOWARNING | LIBXML_NOERROR
+        );
+
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        return $document;
+    }
+
+    protected function extractDocumentTitle(\DOMXPath $xpath): string
+    {
+        $candidates = [
+            '//meta[@property="og:title"]/@content',
+            '//title',
+            '//h1',
+        ];
+
+        foreach ($candidates as $query) {
+            $node = $xpath->query($query)?->item(0);
+            $value = $node ? trim(preg_replace('/\s+/', ' ', $node->textContent)) : '';
+
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return 'Untitled';
+    }
+
+    /**
+     * Drop chrome from the tree so only candidate content remains.
+     *
+     * @param bool $includeClassPatterns false strips structural tags only - the
+     *        conservative pass used when the aggressive one leaves nothing behind.
+     */
+    protected function stripNoiseNodes(\DOMXPath $xpath, bool $includeClassPatterns = true): void
+    {
+        $removals = [];
+
+        foreach (self::NOISE_TAGS as $tag) {
+            foreach ($xpath->query('//' . $tag) as $node) {
+                $removals[] = $node;
+            }
+        }
+
+        if ($includeClassPatterns) {
+            foreach (self::NOISE_PATTERNS as $pattern) {
+                foreach ($xpath->query($this->noiseAttributeQuery($pattern)) as $node) {
+                    $removals[] = $node;
+                }
+            }
+        }
+
+        foreach ($removals as $node) {
+            // Never unhook the page itself - some themes put theme-name classes on
+            // <body> (e.g. "mega-menu-main"), and a substring match there would
+            // otherwise take the entire document with it.
+            if (in_array(strtolower($node->nodeName), ['html', 'body'], true)) {
+                continue;
+            }
+
+            // A node removed as part of an earlier subtree has no parent left.
+            $node->parentNode?->removeChild($node);
+        }
+    }
+
+    /**
+     * Match elements whose class/id contains a *token starting with* the pattern.
+     *
+     * Padding the attribute with spaces anchors the match to a token boundary, so
+     * "modal" hits "modal-content" but not "mega-menu-toggle" - plain substring
+     * matching conflates the two and strips real content.
+     */
+    protected function noiseAttributeQuery(string $pattern): string
+    {
+        $lower = fn (string $attr) => sprintf(
+            'concat(" ", translate(normalize-space(@%s), "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), " ")',
+            $attr
+        );
+
+        return sprintf(
+            '//*[contains(%s, " %s") or contains(%s, " %s")]',
+            $lower('class'),
+            $pattern,
+            $lower('id'),
+            $pattern
+        );
+    }
+
+    /**
+     * Pick the densest content container. Rather than trusting the first
+     * selector that matches, score every candidate by text length and take the
+     * winner - a page whose real content sits in an unusual wrapper still works,
+     * and an empty <main> can't shadow the article beneath it.
+     */
+    protected function extractMainContent(\DOMXPath $xpath): string
+    {
+        $candidateQueries = [
+            '//article',
+            '//main',
+            '//*[@role="main"]',
+            '//*[contains(translate(@class, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "entry-content")]',
+            '//*[contains(translate(@class, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "post-content")]',
+            '//*[contains(translate(@class, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "page-content")]',
+            '//*[contains(translate(@class, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "site-content")]',
+            '//*[contains(translate(@id, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "content")]',
+            '//*[contains(translate(@class, "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"), "content")]',
+        ];
+
+        $best = '';
+
+        foreach ($candidateQueries as $query) {
+            foreach ($xpath->query($query) ?: [] as $node) {
+                $text = $this->nodeToText($node);
+
+                if (strlen($text) > strlen($best)) {
+                    $best = $text;
+                }
+            }
+        }
+
+        // Nothing scored - fall back to the whole body, which is still sound now
+        // that navigation and modals have been stripped out.
+        if (strlen($best) < self::MIN_EXTRACTED_CONTENT_LENGTH) {
+            $body = $xpath->query('//body')?->item(0);
+            $bodyText = $body ? $this->nodeToText($body) : '';
+
+            if (strlen($bodyText) > strlen($best)) {
+                $best = $bodyText;
+            }
+        }
+
+        return $best;
+    }
+
+    /**
+     * Flatten a node to readable text, keeping block-level boundaries so
+     * headings and list items don't run into the words that follow them.
+     */
+    protected function nodeToText(\DOMNode $node): string
+    {
+        $blockTags = [
+            'p', 'div', 'br', 'li', 'tr', 'section', 'table',
+            'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+        ];
+
+        $document = $node->ownerDocument;
+        $html = $document ? $document->saveHTML($node) : '';
+
+        if ($html === false || $html === '') {
+            return '';
+        }
+
+        $html = preg_replace('/<(' . implode('|', $blockTags) . ')\b[^>]*>/i', "\n$0", $html);
+        $html = preg_replace('/<\/(' . implode('|', $blockTags) . ')>/i', "$0\n", $html);
+
+        $text = html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        // Normalise line endings first - a stray \r sits between newlines and stops
+        // the blank-line collapsing below from seeing them as consecutive.
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+
+        // Collapse runs of spaces/tabs, then runs of blank lines, keeping
+        // paragraph breaks that make the text readable in a prompt.
+        $text = preg_replace('/[ \t\x{00A0}]+/u', ' ', $text);
+        $text = preg_replace('/ *\n *(?:\n *)+/u', "\n\n", $text);
+        $text = preg_replace('/ *\n */u', "\n", $text);
+
+        return trim($text);
     }
 
     public function extractFromUrlWithAISummarization(string $url): array
@@ -264,8 +488,12 @@ Please analyze this content and provide an enhanced version optimized for chatbo
                     
                     $rowData = [];
                     foreach ($cellIterator as $cell) {
-                        $value = $cell->getValue();
-                        if ($value !== null) {
+                        try {
+                            $value = $cell->getCalculatedValue();
+                        } catch (\Exception $e) {
+                            $value = $cell->getValue();
+                        }
+                        if ($value !== null && $value !== '') {
                             $rowData[] = $value;
                         }
                     }

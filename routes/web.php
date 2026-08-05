@@ -107,6 +107,8 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/chatbots/{chatbot}/sources', [ChatbotController::class, 'storeSources'])->name('chatbots.sources.store');
     Route::post('/chatbots/{chatbot}/sources/{source}/sync', [ChatbotController::class, 'syncSource'])->name('chatbots.sources.sync');
     Route::post('/chatbots/{chatbot}/sources/sync-all', [ChatbotController::class, 'syncAllSources'])->name('chatbots.sources.sync-all');
+    Route::post('/chatbots/{chatbot}/sources/{source}/approve', [ChatbotController::class, 'approveSource'])->name('chatbots.sources.approve');
+    Route::post('/chatbots/{chatbot}/sources/{source}/reject', [ChatbotController::class, 'rejectSource'])->name('chatbots.sources.reject');
     Route::get('/chatbots/{chatbot}/products', [ChatbotController::class, 'products'])->name('chatbots.products');
     Route::post('/chatbots/{chatbot}/products', [ChatbotController::class, 'storeProduct'])->name('chatbots.products.store');
     Route::put('/chatbots/{chatbot}/products/{product}', [ChatbotController::class, 'updateProduct'])->name('chatbots.products.update');

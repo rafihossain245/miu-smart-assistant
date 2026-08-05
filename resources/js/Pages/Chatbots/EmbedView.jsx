@@ -110,10 +110,26 @@ export default function EmbedView({ chatbot, tenant_id }) {
             
             if (data.messages && data.messages.length > 0) {
                 console.log('Loaded', data.messages.length, 'previous embed messages');
-                setMessages(data.messages.map(msg => ({
-                    ...msg,
-                    timestamp: new Date(msg.timestamp)
-                })));
+                const history = data.messages.map(msg => ({
+                    id: msg.id,
+                    content: msg.content,
+                    // API sends `isBot`; fall back to the raw column name just in case
+                    isBot: Boolean(msg.isBot ?? msg.is_bot),
+                    timestamp: new Date(msg.timestamp ?? msg.created_at),
+                    sources: msg.sources || [],
+                    learningDataId: msg.learningDataId ?? null,
+                    feedback: msg.feedback ?? null,
+                    showContactInfo: msg.showContactInfo ?? false
+                }));
+
+                // The welcome message is never persisted, so re-add it on top
+                setMessages([{
+                    id: 'welcome',
+                    content: chatbot.welcome_message || "Hello! How can I help you today?",
+                    isBot: true,
+                    timestamp: history[0].timestamp,
+                    sources: []
+                }, ...history]);
             } else {
                 console.log('No previous embed messages found, starting fresh');
                 setMessages([{
